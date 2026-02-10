@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_magnetcooling"
+version = "0.1.0"
+description = "Thermal-hydraulic calculations for water-cooled high-field magnets"
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["magnets", "cooling", "thermal-hydraulics", "heat-transfer"]
+authors = [
+    {name = "Christophe Trophime", email = "christophe.trophime@lncmi.cnrs.fr"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0.0",
+    "scipy>=1.14.0",
+    "pandas>=2.2.0",
+    "iapws>=1.4.0",
+    "pint>=0.17.1",
+    "ht>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=24.0.0",
+    "mypy>=1.8.0",
+    "flake8>=7.0.0",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "sphinx-autodoc-typehints>=2.0.0",
+]
+viz = [
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+]
+clawpack = [
+    "clawpack>=5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/MagnetDB/python_magnetcooling"
+Repository = "https://github.com/MagnetDB/python_magnetcooling"
+Documentation = "https://python-magnetcooling.readthedocs.io"
+
+[tool.setuptools]
+packages = ["python_magnetcooling"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=python_magnetcooling --cov-report=html --cov-report=term"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
