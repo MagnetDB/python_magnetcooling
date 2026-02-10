@@ -1,0 +1,54 @@
+python_magnetcooling for Debian
+================================
+
+This package provides thermal-hydraulic calculations for water-cooled
+high-field magnets.
+
+Installation
+------------
+
+The package can be installed using apt:
+
+    sudo apt install python3-magnetcooling
+
+Usage
+-----
+
+Examples can be found in /usr/share/doc/python3-magnetcooling/examples/
+
+To use the package in your Python scripts:
+
+    from python_magnetcooling import WaterFlow, Channel
+    
+For more information, see the upstream documentation at:
+https://python-magnetcooling.readthedocs.io
+
+Dependencies
+------------
+
+The package requires the following Python packages:
+- numpy (>= 2.0.0)
+- scipy (>= 1.14.0)
+- pandas (>= 2.2.0)
+- iapws (>= 1.4.0) - for water properties
+- pint (>= 0.17.1) - for unit-aware calculations
+- ht (>= 1.2.0) - for heat transfer calculations
+
+Optional dependencies for visualization:
+- matplotlib
+- seaborn
+
+Testing
+-------
+
+The package includes a comprehensive test suite. To run the tests:
+
+    python3 -m pytest /usr/lib/python3/dist-packages/python_magnetcooling
+
+Support
+-------
+
+For issues and questions, please visit:
+https://github.com/MagnetDB/python_magnetcooling/issues
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Sun, 09 Feb 2026

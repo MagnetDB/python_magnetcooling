@@ -1,0 +1,49 @@
+Source: python-magnetcooling
+Section: python
+Priority: optional
+Maintainer: Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-setuptools,
+               python3-numpy (>= 2.0.0),
+               python3-scipy (>= 1.14.0),
+               python3-pandas (>= 2.2.0),
+               python3-iapws (>= 1.4.0),
+               python3-pint (>= 0.17.1),
+               python3-ht (>= 1.2.0),
+               python3-pytest,
+               python3-pytest-cov
+Standards-Version: 4.6.2
+Homepage: https://github.com/MagnetDB/python_magnetcooling
+Vcs-Browser: https://github.com/MagnetDB/python_magnetcooling
+Vcs-Git: https://github.com/MagnetDB/python_magnetcooling.git
+Rules-Requires-Root: no
+
+Package: python3-magnetcooling
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         python3-numpy (>= 2.0.0),
+         python3-scipy (>= 1.14.0),
+         python3-pandas (>= 2.2.0),
+         python3-iapws (>= 1.4.0),
+         python3-pint (>= 0.17.1),
+         python3-ht (>= 1.2.0)
+Suggests: python3-matplotlib,
+          python3-seaborn
+Description: Thermal-hydraulic calculations for water-cooled high-field magnets
+ python_magnetcooling is a Python package for performing thermal-hydraulic
+ analysis of water-cooled high-field magnets. It provides comprehensive tools
+ for computing heat transfer, fluid flow, and temperature distributions in
+ cooling channels, with a particular focus on the requirements of high-power
+ resistive magnets.
+ .
+ Key Features:
+  * Thermal-Hydraulic Solver: Complete analysis of cooling channels
+  * Heat Transfer Correlations: Support for multiple correlations
+  * Water Properties: IAPWS-IF97 standard water/steam properties
+  * Friction Models: Various friction factor correlations
+  * Axial Discretization: Support for non-uniform power distribution
+  * Heat Exchanger Analysis: Primary cooling loop calculations
+  * Unit-Aware Calculations: Integration with pint for physical quantities

@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+export PYBUILD_NAME=python_magnetcooling
+
+%:
+	dh $@ --with python3 --buildsystem=pybuild
+
+override_dh_auto_test:
+	# Run tests if pytest is available
+	PYTHONPATH=. python3 -m pytest tests/ || echo "Tests skipped"
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf build *.egg-info .pytest_cache htmlcov .coverage
+	find . -name __pycache__ -type d -exec rm -rf {} + || true

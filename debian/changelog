@@ -1,0 +1,11 @@
+python-magnetcooling (0.1.0-1) unstable; urgency=medium
+
+  * Initial release.
+  * Thermal-hydraulic calculations for water-cooled high-field magnets.
+  * Support for multiple heat transfer correlations.
+  * IAPWS-IF97 water properties integration.
+  * Friction models for turbulent flow.
+  * Heat exchanger analysis capabilities.
+  * Unit-aware calculations with pint.
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Sun, 09 Feb 2026 12:00:00 +0100
