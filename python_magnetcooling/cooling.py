@@ -37,7 +37,10 @@ def Montgomery(
     Dh: meter
 
     see: Montgomery p38 eq 3.3 Watch out for Unit change
-    Montgomery formula is given for Length==Centimeter, T in Celsius
+    Original Montgomery formula is given for Length==Centimeter, T in Celsius
+    Here we use Length==Meter, therefore the coefficient change from 0.1426 to 1426.404, 
+    and T is in Kelvin, therefore we add 273 to the formula.
+    
     HMFL introduce an additional fuzzy factor
     """
 
