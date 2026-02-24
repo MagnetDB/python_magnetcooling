@@ -3,7 +3,52 @@ Channel geometry and data structures for thermal-hydraulic calculations.
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional
+
+
+class CoolingLevel(str, Enum):
+    """
+    Cooling model hierarchy for water-cooled magnets.
+
+    Six levels of increasing physical detail:
+
+    mean    – calorimetric ΔT, global h at mean T. U fixed from pump curve Q(I).
+    meanH   – same per cooling channel; Q distributed ∝ Sh.
+    grad    – U from pressure-drop friction equation, global h at mean T.
+    gradH   – same per cooling channel, each sees the common ΔP.
+    gradHZ  – per channel + axial power distribution; one mean h per channel.
+    gradHZH – same, but one h per axial section (for feelpp boundary conditions).
+
+    The string value matches the ``--cooling`` CLI argument used by feelpp.
+    """
+
+    MEAN = "mean"
+    MEAN_H = "meanH"
+    GRAD = "grad"
+    GRAD_H = "gradH"
+    GRAD_HZ = "gradHZ"
+    GRAD_HZH = "gradHZH"
+
+    @property
+    def is_per_channel(self) -> bool:
+        """True when calculation is done channel-by-channel (H suffix)."""
+        return "H" in self.value
+
+    @property
+    def is_axial(self) -> bool:
+        """True when axial power distribution is resolved (Z suffix)."""
+        return "Z" in self.value
+
+    @property
+    def is_mean(self) -> bool:
+        """True when U comes from the pump-curve flow rate (non-iterative)."""
+        return self.value.startswith("mean")
+
+    @property
+    def has_per_section_h(self) -> bool:
+        """True when a heat coefficient is required per axial section."""
+        return self == CoolingLevel.GRAD_HZH
 
 
 @dataclass
