@@ -6,15 +6,6 @@ from typing import Tuple, Optional
 
 import math
 
-import matplotlib
-
-# Make LaTeX optional
-try:
-    matplotlib.rcParams["text.usetex"] = True
-except Exception:
-    pass  # LaTeX not available, use default rendering
-
-import matplotlib.pyplot as plt
 import pandas as pd
 import ht
 
@@ -52,11 +43,27 @@ def _create_plot(
         save_path: Path to save plot (if not showing)
         grid: Show grid
     """
+    try:
+        import matplotlib
+
+        # Make LaTeX optional
+        try:
+            matplotlib.rcParams["text.usetex"] = True
+        except Exception:
+            pass  # LaTeX not available, use default rendering
+
+        import matplotlib.pyplot as plt
+
+    except Exception:
+        print("_create_plot: Matplotlib not available")
+        return
+
     fig, ax = plt.subplots()
 
     for y_spec in y_cols:
-        col = y_spec.pop("col")
-        df.plot(x=x_col, y=col, ax=ax, **y_spec)
+        col = y_spec["col"]
+        plot_kwargs = {k: v for k, v in y_spec.items() if k != "col"}
+        df.plot(x=x_col, y=col, ax=ax, **plot_kwargs)
 
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -792,7 +799,7 @@ def calculate_heat_transfer_coefficients(
     """
     if hx_config is None:
         hx_config = DEFAULT_HX_CONFIG
-    
+
     # Heat exchanger geometry from configuration
     Nc = hx_config.num_channels
     Ac = hx_config.channel_area
