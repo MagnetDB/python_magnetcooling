@@ -440,7 +440,8 @@ def getTout(T: List[float], VolMass: List[float], SpecHeat: List[float], Q: List
     """
     Compute energy-weighted mixed outlet temperature.
 
-    Formula: T_out = Σ(Tᵢ·ρᵢ·cpᵢ·Qᵢ) / Σ(ρᵢ·cpᵢ·Qᵢ)
+    Legacy wrapper — delegates to
+    :func:`thermohydraulics.compute_mixed_outlet_temperature`.
 
     Args:
         T:        Outlet temperatures per channel [K]
@@ -451,11 +452,8 @@ def getTout(T: List[float], VolMass: List[float], SpecHeat: List[float], Q: List
     Returns:
         Mixed outlet temperature [K]
     """
-    Tout = 0
-    rhoCpQ = 0
-    for Ti, RHOi, CPi, Qi in zip(T, VolMass, SpecHeat, Q):
-        Tout += Ti * RHOi * CPi * Qi
-        rhoCpQ += RHOi * CPi * Qi
-
-    Tout /= rhoCpQ
-    return Tout
+    # Lazy import avoids the circular dependency:
+    # thermohydraulics imports cooling at module level, so cooling must not
+    # import thermohydraulics at module level.
+    from .thermohydraulics import compute_mixed_outlet_temperature
+    return compute_mixed_outlet_temperature(T, VolMass, SpecHeat, Q)
