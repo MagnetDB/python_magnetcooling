@@ -7,10 +7,13 @@ water-cooled magnet thermal analysis.
 
 from dataclasses import dataclass
 from typing import List, Optional
+from math import sqrt
 import numpy as np
 
 from .channel import ChannelGeometry, AxialDiscretization, ChannelInput, ChannelOutput
-from .cooling import steam, Uw, getDT, getHeatCoeff
+from .cooling import steam, getDT
+from .correlations import get_correlation
+from .friction import get_friction_model
 from .waterflow import WaterFlow
 
 
@@ -141,6 +144,9 @@ class ThermalHydraulicCalculator:
         """
         self._validate_inputs(inputs)
 
+        correlation = get_correlation(inputs.heat_correlation, inputs.fuzzy_factor)
+        friction_model = get_friction_model(inputs.friction_model)
+
         channel_outputs = []
         errors_temp = []
         errors_heat = []
@@ -151,10 +157,10 @@ class ThermalHydraulicCalculator:
 
             if channel.axial_discretization:
                 # gradHZ mode with axial discretization
-                output = self._compute_channel_axial(channel, inputs)
+                output = self._compute_channel_axial(channel, inputs, correlation, friction_model)
             else:
                 # Standard mode (mean values)
-                output = self._compute_channel_uniform(channel, inputs)
+                output = self._compute_channel_uniform(channel, inputs, correlation, friction_model)
 
             channel_outputs.append(output)
 
@@ -215,7 +221,8 @@ class ThermalHydraulicCalculator:
         return self.compute(inputs)
 
     def _compute_channel_uniform(
-        self, channel: ChannelInput, global_inputs: ThermalHydraulicInput
+        self, channel: ChannelInput, global_inputs: ThermalHydraulicInput,
+        correlation, friction_model,
     ) -> ChannelOutput:
         """Compute channel with uniform (mean) properties"""
 
@@ -234,6 +241,9 @@ class ThermalHydraulicCalculator:
         converged = False
         iteration = 0
 
+        dPw_Pa = global_inputs.pressure_drop * 1.0e5  # bar → Pa
+        pextra = global_inputs.extra_pressure_loss
+
         for iteration in range(global_inputs.max_iterations):
             # Current estimates
             T_mean = channel.temp_inlet + dT / 2.0
@@ -242,30 +252,29 @@ class ThermalHydraulicCalculator:
             # Compute new temperature rise
             dT_new = getDT(flow, channel.power, T_mean, global_inputs.pressure_inlet)
 
-            # Compute new heat transfer coefficient
-            h_new = getHeatCoeff(
-                geom.hydraulic_diameter,
-                geom.length,
-                U,
-                T_mean,
-                global_inputs.pressure_inlet,
-                global_inputs.pressure_drop,
-                model=global_inputs.heat_correlation,
-                friction=global_inputs.friction_model,
-                fuzzy=global_inputs.fuzzy_factor,
-                pextra=global_inputs.extra_pressure_loss,
+            # Compute new heat transfer coefficient via OOP correlation
+            h_new = correlation.compute(
+                T_mean, global_inputs.pressure_inlet, U,
+                geom.hydraulic_diameter, geom.length,
             )
 
-            # Compute new velocity from pressure drop
-            Steam = steam(T_mean, global_inputs.pressure_inlet)
-            U_new, cf_new = Uw(
-                Steam,
-                global_inputs.pressure_drop,
-                geom.hydraulic_diameter,
-                geom.length,
-                friction=global_inputs.friction_model,
-                uguess=U,
-            )
+            # Compute new velocity from pressure drop via OOP friction model
+            state = steam(T_mean, global_inputs.pressure_inlet)
+            U_iter, f_iter = U, 0.055
+            _ok = False
+            for _ in range(10):
+                Re = state.density * U_iter * geom.hydraulic_diameter / state.dynamic_viscosity
+                nf = friction_model.compute(Re, geom.hydraulic_diameter, f_iter)
+                nU = sqrt(2.0 * dPw_Pa / (state.density * (pextra + nf * geom.length / geom.hydraulic_diameter)))
+                err_U = abs(1 - nU / U_iter) if U_iter > 0 else 1.0
+                err_f = abs(1 - nf / f_iter) if f_iter > 0 else 1.0
+                U_iter, f_iter = nU, nf
+                if err_U <= 1e-3 and err_f <= 1e-3:
+                    _ok = True
+                    break
+            if not _ok:
+                raise RuntimeError("Velocity iteration did not converge")
+            U_new, cf_new = U_iter, f_iter
 
             # Check convergence
             flow_new = U_new * geom.cross_section
@@ -309,13 +318,14 @@ class ThermalHydraulicCalculator:
         )
 
     def _compute_channel_axial(
-        self, channel: ChannelInput, global_inputs: ThermalHydraulicInput
+        self, channel: ChannelInput, global_inputs: ThermalHydraulicInput,
+        correlation, friction_model,
     ) -> ChannelOutput:
         """Compute channel with axial discretization (gradHZ mode)"""
 
         geom = channel.geometry
         axial = channel.axial_discretization
-        n_sections = len(axial.power_distribution)
+        n_sections = axial.n_sections
 
         # Initialize distributions
         T_z = [channel.temp_inlet] + [channel.temp_inlet + 10.0] * n_sections
@@ -327,6 +337,10 @@ class ThermalHydraulicCalculator:
         converged = False
         iteration = 0
 
+        dPw_Pa = global_inputs.pressure_drop * 1.0e5  # bar → Pa
+        pextra = global_inputs.extra_pressure_loss
+        z_span = axial.z_positions[-1] - axial.z_positions[0]
+
         for iteration in range(global_inputs.max_iterations):
             flow = U * geom.cross_section
             T_z_old = T_z.copy()
@@ -334,9 +348,7 @@ class ThermalHydraulicCalculator:
             # Compute temperature distribution
             for k in range(n_sections):
                 # Local pressure
-                z_frac = (axial.z_positions[k] - axial.z_positions[0]) / (
-                    axial.z_positions[-1] - axial.z_positions[0]
-                )
+                z_frac = (axial.z_positions[k] - axial.z_positions[0]) / z_span
                 P_local = global_inputs.pressure_inlet - global_inputs.pressure_drop * z_frac
 
                 # Temperature rise in this section
@@ -344,37 +356,33 @@ class ThermalHydraulicCalculator:
                 dT_section = getDT(flow, axial.power_distribution[k], T_mean_section, P_local)
                 T_z[k + 1] = T_z[k] + dT_section
 
-            # Compute heat coefficient distribution
+            # Compute heat coefficient distribution via OOP correlation
             for k in range(len(T_z)):
-                z_frac = (axial.z_positions[k] - axial.z_positions[0]) / (
-                    axial.z_positions[-1] - axial.z_positions[0]
-                )
+                z_frac = (axial.z_positions[k] - axial.z_positions[0]) / z_span
                 P_local = global_inputs.pressure_inlet - global_inputs.pressure_drop * z_frac
 
-                h_z[k] = getHeatCoeff(
-                    geom.hydraulic_diameter,
-                    geom.length,
-                    U,
-                    T_z[k],
-                    P_local,
-                    global_inputs.pressure_drop,
-                    model=global_inputs.heat_correlation,
-                    friction=global_inputs.friction_model,
-                    fuzzy=global_inputs.fuzzy_factor,
-                    pextra=global_inputs.extra_pressure_loss,
+                h_z[k] = correlation.compute(
+                    T_z[k], P_local, U, geom.hydraulic_diameter, geom.length,
                 )
 
-            # Update velocity
+            # Update velocity via OOP friction model
             T_mean = (T_z[0] + T_z[-1]) / 2.0
-            Steam = steam(T_mean, global_inputs.pressure_inlet)
-            U_new, cf = Uw(
-                Steam,
-                global_inputs.pressure_drop,
-                geom.hydraulic_diameter,
-                geom.length,
-                friction=global_inputs.friction_model,
-                uguess=U,
-            )
+            state = steam(T_mean, global_inputs.pressure_inlet)
+            U_iter, f_iter = U, 0.055
+            _ok = False
+            for _ in range(10):
+                Re = state.density * U_iter * geom.hydraulic_diameter / state.dynamic_viscosity
+                nf = friction_model.compute(Re, geom.hydraulic_diameter, f_iter)
+                nU = sqrt(2.0 * dPw_Pa / (state.density * (pextra + nf * geom.length / geom.hydraulic_diameter)))
+                err_U = abs(1 - nU / U_iter) if U_iter > 0 else 1.0
+                err_f = abs(1 - nf / f_iter) if f_iter > 0 else 1.0
+                U_iter, f_iter = nU, nf
+                if err_U <= 1e-3 and err_f <= 1e-3:
+                    _ok = True
+                    break
+            if not _ok:
+                raise RuntimeError("Velocity iteration did not converge")
+            U_new, cf = U_iter, f_iter
 
             # Check convergence
             flow_new = U_new * geom.cross_section
