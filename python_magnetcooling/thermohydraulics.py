@@ -581,8 +581,7 @@ class ThermalHydraulicCalculator:
             heat_coeff=float(np.mean(h_z)),
             # gradHZH: per-section h for feelpp boundary conditions.
             heat_coeff_distribution=list(h_z) if per_section_h else None,
-            # All axial levels: boundary temperatures and per-section rises.
-            temp_distribution=list(T_z),
+            # All axial levels: per-section dTw for feelpp (Tw reconstructed from T_in + cumsum).
             temp_rise_distribution=dTw_sections,
             density_outlet=state_out.density,
             specific_heat_outlet=state_out.specific_heat,

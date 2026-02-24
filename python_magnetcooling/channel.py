@@ -157,8 +157,7 @@ class ChannelOutput:
         temp_mean: Mean temperature [K]
         heat_coeff: Heat transfer coefficient [W/m²/K]
         heat_coeff_distribution: Axial h distribution for gradHZ [W/m²/K]
-        temp_distribution: Axial temperature distribution for gradHZ [K]
-        density_outlet: Water density at outlet [kg/m³]
+density_outlet: Water density at outlet [kg/m³]
         specific_heat_outlet: Water specific heat at outlet [kJ/kg/K]
         converged: Whether iteration converged
         iterations: Number of iterations performed
@@ -173,13 +172,12 @@ class ChannelOutput:
     temp_mean: float  # K
     
     heat_coeff: float  # W/m²/K
-    # gradHZH: one h per axial section (n values). None for all other levels.
+    # gradHZH only: one h per axial section (n values). None for all other levels.
     heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K per section
 
-    # gradHZ / gradHZH: n+1 boundary temperatures [T_z0, T_z1, …, T_zn].
-    temp_distribution: Optional[List[float]] = None  # K at section boundaries
     # gradHZ / gradHZH: n per-section temperature rises [dTw_0, …, dTw_{n-1}].
-    # Together with temp_inlet this gives feelpp the local Tw at each section.
+    # feelpp reconstructs local Tw at section k as: T_in + sum(dTw_0..dTw_{k-1}).
+    # None for non-axial levels (mean, meanH, grad, gradH).
     temp_rise_distribution: Optional[List[float]] = None  # K per section
 
     density_outlet: float = 0.0  # kg/m³

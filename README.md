@@ -131,10 +131,11 @@ calculator = ThermalHydraulicCalculator(
 )
 result = calculator.solve_channel(channel_input)
 
-# Access axial temperature distribution
-for i, temp in enumerate(result.temp_distribution):
-    z = discretization.z_positions[i]
-    print(f"z = {z:.2f} m: T = {temp:.2f} K")
+# Access per-section dTw (feelpp reconstructs Tw as T_in + cumsum(dTw))
+T_in = result.temp_inlet
+for i, dTw in enumerate(result.temp_rise_distribution):
+    T_section = T_in + sum(result.temp_rise_distribution[:i])
+    print(f"section {i}: dTw = {dTw:.4f} K, T_start = {T_section:.2f} K")
 ```
 
 ## Main Modules
