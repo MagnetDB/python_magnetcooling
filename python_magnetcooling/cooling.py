@@ -16,59 +16,7 @@ def steam(Tw: float, P: float):
     P: Pressure in Bar
     """
     Mpa = 0.1 * P
-    # print(f"steam: {Mpa} MPa, {Tw} K", flush=True)
-    # _steam = IAPWS97(P=Mpa, T=Tw)
-    # print(f"_steam: rho={_steam.rho}, cp={_steam.cp* 1.0e3}", flush=True)
     return IAPWS97(P=Mpa, T=Tw)
-
-
-# def rho(Tw: float, P: float) -> float:
-#     """
-#     compute water volumic mass in ???
-
-#     Tw: Temperature in Kelvin
-#     P: Pressure in Bar
-#     """
-#     Mpa = 0.1 * P
-#     Steam = IAPWS97(P=Mpa, T=Tw)
-#     # print(f"rho({Mpa} MPa, {Tw} K)={Steam.rho}")
-#     return Steam.rho
-
-# def Cp(Tw: float, P: float) -> float:
-#     """
-#     compute water specific heat in ???kJ/kg·K
-
-#     Tw: Temperature in Kelvin
-#     P: Pressure in Bar
-#     """
-#     Mpa = 0.1 * P
-#     Steam = IAPWS97(P=Mpa, T=Tw)
-#     # print(f"Cp({Mpa} MPa, {Tw} K)={Steam.cp} kJ/kg·K")
-#     return Steam.cp * 1.0e3  # watch out units
-
-# def viscosity(Tw: float, P: float) -> float:
-#     """
-#     compute water viscosity in ??
-
-#     Tw: Temperature in Kelvin
-#     P: Pressure in Bar
-#     """
-#     Mpa = 0.1 * P
-#     Steam = IAPWS97(P=Mpa, T=Tw)
-#     # print(f"mu({Mpa} MPa, {Tw} K)={Steam.mu}")
-#     return Steam.mu
-
-# def k(Tw: float, P: float) -> float:
-#     """
-#     compute water heat conductivity in ??
-
-#     Tw: Temperature in Kelvin
-#     P: Pressure in Bar
-#     """
-#     Mpa = 0.1 * P
-#     Steam = IAPWS97(P=Mpa, T=Tw)
-#     # print(f"k({Mpa} MPa, {Tw} K)={Steam.k}")
-#     return Steam.k
 
 
 def Montgomery(
@@ -107,7 +55,7 @@ def Dittus(
     Dh: float,
     L: float,
     friction: str,
-    fuzzy: str = 1.0,
+    fuzzy: float = 1.0,
     pextra: float = 1,
 ) -> float:
     params = (0.023, 0.8, 0.4)
@@ -123,7 +71,7 @@ def Colburn(
     Dh: float,
     L: float,
     friction: str,
-    fuzzy: str = 1.0,
+    fuzzy: float = 1.0,
     pextra: float = 1,
 ) -> float:
     params = (0.023, 0.8, 0.3)
@@ -139,7 +87,7 @@ def Silverberg(
     Dh: float,
     L: float,
     friction: str,
-    fuzzy: str = 1.0,
+    fuzzy: float = 1.0,
     pextra: float = 1,
 ) -> float:
     params = (0.015, 0.85, 0.3)
@@ -240,12 +188,12 @@ def Colebrook(Re: float, Dh: float, f: float, rugosity: float) -> float:
     return cf
 
 
-def Swanee(Re: float, Dh: float, f: float, rugosity: float) -> float:
+def Swamee(Re: float, Dh: float, f: float, rugosity: float) -> float:
     def compute_new(val):
         return 1.3254 / log(rugosity / (3.75 * Dh) + 5.74 / exp(log(Re) * 0.9)) ** 2
 
-    cf = _iterative_convergence(f, compute_new, method_name="Swanee")
-    # print(f"Swanee={cf}")
+    cf = _iterative_convergence(f, compute_new, method_name="Swamee")
+    # print(f"Swamee={cf}")
     return cf
 
 
@@ -268,7 +216,7 @@ def Uw(
         "Blasius": Blasius,
         "Filonenko": Filonenko,
         "Colebrook": Colebrook,
-        "Swanee": Swanee,
+        "Swamee": Swamee,
     }
 
     U = uguess
@@ -317,10 +265,10 @@ def Reynolds(Steam, U: float, Dh: float, L: float) -> float:
     return Re
 
 
-def Prandlt(
+def Prandtl(
     Steam,
 ) -> float:
-    """Compute Prandlt as Pr = mu*cp/k"""
+    """Compute Prandtl as Pr = mu*cp/k"""
     Pr = Steam.mu * Steam.cp * 1.0e3 / Steam.k
     # print(f"Pr={Pr}")
     return Pr
@@ -347,7 +295,6 @@ def hcorrelation(
     params (alpha, n, m): coeffs of correlations
     Tw: K
     Pw: bar
-    dPw: bar # given by Pump
     Uw: meter/second
     Dh: meter
     L: meter
@@ -355,7 +302,7 @@ def hcorrelation(
 
     (alpha, n, m) = params
     Steam = steam(Tw, Pw)
-    nU = Uw(
+    nU, _ = Uw(
         Steam,
         dPw,
         Dh,
@@ -368,7 +315,7 @@ def hcorrelation(
     )
 
     Re = Reynolds(Steam, nU, Dh, L)
-    Pr = Prandlt(Steam)
+    Pr = Prandtl(Steam)
 
     h = alpha * exp(log(Re) * n) * exp(log(Pr) * m) / Dh
     # print(f"hcorrelation({model}): friction={friction}, h={h}, Pr={Pr}, Re={Re}")
