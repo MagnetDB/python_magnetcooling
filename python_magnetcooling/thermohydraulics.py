@@ -566,6 +566,10 @@ class ThermalHydraulicCalculator:
 
         state_out = WaterProperties.get_state(T_z[-1], inputs.pressure_inlet)
 
+        # Per-section temperature rises: dTw_k = T_z[k+1] - T_z[k]  (n values).
+        # Together with temp_inlet these give feelpp the local Tw at each section.
+        dTw_sections = [T_z[k + 1] - T_z[k] for k in range(n)]
+
         return ChannelOutput(
             velocity=U,
             flow_rate=U * geom.cross_section,
@@ -575,9 +579,11 @@ class ThermalHydraulicCalculator:
             temp_rise=T_z[-1] - T_z[0],
             temp_mean=float(np.mean(T_z)),
             heat_coeff=float(np.mean(h_z)),
-            # gradHZH exports per-section h for feelpp boundary conditions.
+            # gradHZH: per-section h for feelpp boundary conditions.
             heat_coeff_distribution=list(h_z) if per_section_h else None,
+            # All axial levels: boundary temperatures and per-section rises.
             temp_distribution=list(T_z),
+            temp_rise_distribution=dTw_sections,
             density_outlet=state_out.density,
             specific_heat_outlet=state_out.specific_heat,
             converged=converged,

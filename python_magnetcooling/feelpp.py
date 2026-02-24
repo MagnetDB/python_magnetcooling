@@ -207,13 +207,41 @@ class FeelppThermalHydraulicAdapter:
                 p_params.get("dTwH", []),
                 p_params.get("hwH", []),
             ):
-                if param_dT:
-                    updates[param_dT] = channel_out.temp_rise
-                # For gradHZH the per-section distribution is in
-                # heat_coeff_distribution; the scalar heat_coeff (mean) is
-                # still written as the FeelPP parameter.
+                # Mean heat coefficient (all per-channel levels).
                 if param_h:
                     updates[param_h] = channel_out.heat_coeff
+
+                if cooling_level.is_axial:
+                    # gradHZ / gradHZH: per-section temperature rises.
+                    # p_params["dTwHZ"] is expected to be a list of lists:
+                    # p_params["dTwHZ"][channel_idx] = [param_name_k0, param_name_k1, ...]
+                    # If not provided, fall back to total rise only.
+                    dTwHZ_params = p_params.get("dTwHZ", [])
+                    if dTwHZ_params and channel_out.temp_rise_distribution is not None:
+                        ch_idx = list(th_output.channels).index(channel_out)
+                        if ch_idx < len(dTwHZ_params):
+                            for param_name, dTw_k in zip(
+                                dTwHZ_params[ch_idx],
+                                channel_out.temp_rise_distribution,
+                            ):
+                                updates[param_name] = dTw_k
+                    elif param_dT:
+                        updates[param_dT] = channel_out.temp_rise
+
+                    # gradHZH: per-section h coefficients.
+                    hwHZ_params = p_params.get("hwHZ", [])
+                    if hwHZ_params and channel_out.heat_coeff_distribution is not None:
+                        ch_idx = list(th_output.channels).index(channel_out)
+                        if ch_idx < len(hwHZ_params):
+                            for param_name, h_k in zip(
+                                hwHZ_params[ch_idx],
+                                channel_out.heat_coeff_distribution,
+                            ):
+                                updates[param_name] = h_k
+                else:
+                    # mean / meanH / gradH: single dTw per channel.
+                    if param_dT:
+                        updates[param_dT] = channel_out.temp_rise
         else:
             if th_output.channels:
                 ch = th_output.channels[0]
@@ -243,7 +271,14 @@ class FeelppThermalHydraulicAdapter:
             if "cf" in dict_df[target]:
                 dict_df[target]["cf"][f"cf_{cname}"] = [channel_out.friction_factor]
 
-            # gradHZH: store per-section h distribution for downstream use.
+            # gradHZ / gradHZH: store per-section Tw data for feelpp BCs.
+            # T_in is already in the parameters; dTw per section is new.
+            if channel_out.temp_rise_distribution is not None:
+                dict_df[target].setdefault("DTZ", {})[f"dTwZ_{cname}"] = (
+                    channel_out.temp_rise_distribution
+                )
+
+            # gradHZH: store per-section h distribution for feelpp BCs.
             if channel_out.heat_coeff_distribution is not None:
                 dict_df[target].setdefault("HeatCoeffZ", {})[f"hwZ_{cname}"] = (
                     channel_out.heat_coeff_distribution

@@ -173,11 +173,17 @@ class ChannelOutput:
     temp_mean: float  # K
     
     heat_coeff: float  # W/m²/K
-    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K
-    temp_distribution: Optional[List[float]] = None  # K
-    
+    # gradHZH: one h per axial section (n values). None for all other levels.
+    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K per section
+
+    # gradHZ / gradHZH: n+1 boundary temperatures [T_z0, T_z1, …, T_zn].
+    temp_distribution: Optional[List[float]] = None  # K at section boundaries
+    # gradHZ / gradHZH: n per-section temperature rises [dTw_0, …, dTw_{n-1}].
+    # Together with temp_inlet this gives feelpp the local Tw at each section.
+    temp_rise_distribution: Optional[List[float]] = None  # K per section
+
     density_outlet: float = 0.0  # kg/m³
     specific_heat_outlet: float = 0.0  # kJ/kg/K
-    
+
     converged: bool = True
     iterations: int = 0
