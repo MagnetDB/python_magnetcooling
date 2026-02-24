@@ -15,37 +15,7 @@
 | `Optional[float]` truthy check in `_compute_channel_axial` | `65e7727` | Uses `is not None` |
 | `matplotlib` unconditional import | `d79b4fe` | Deferred to inside `_create_plot` with try/except |
 | `y_spec.pop("col")` mutation | `d79b4fe` | Uses `y_spec["col"]` + filtered copy of kwargs |
-
----
-
-## Critical Bug (Regression)
-
-### 1. `specific_heat_outlet` stores volumetric heat capacity, not specific heat (`thermohydraulics.py:355, 460`)
-
-Both `_compute_channel_uniform` and `_compute_channel_axial` store:
-
-```python
-specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
-```
-
-`Steam_outlet.cp` is in **kJ/kg/K** and `Steam_outlet.rho` is in **kg/m³**. Their product
-has units **kJ/m³/K** (volumetric heat capacity) — this is wrong for a field named and
-typed as specific heat [J/kg/K].
-
-The correct expression is `Steam_outlet.cp * 1e3` (converting kJ/kg/K → J/kg/K).
-
-**Impact:** `_compute_mixed_outlet_temp` passes `density_outlet` and `specific_heat_outlet`
-to `getTout()`:
-
-```python
-rho_list = [ch.density_outlet for ch in channels]     # kg/m³
-cp_list  = [ch.specific_heat_outlet for ch in channels]  # currently cp·ρ (wrong units)
-```
-
-`getTout` computes `Σ(Ti·ρi·cpi·Qi) / Σ(ρi·cpi·Qi)`. With the bug, `cpi` already
-contains `ρ`, so the weighting becomes `ρ²` instead of `ρ`. This cancels only when all
-channels have identical density — **single-channel calculations are unaffected**, but
-**multi-channel mixed outlet temperature is wrong**.
+| `specific_heat_outlet` wrong units | this branch | Now `Steam_outlet.cp` [kJ/kg/K]; unit annotations updated |
 
 ---
 
@@ -162,7 +132,8 @@ replace the legacy module or have the legacy functions delegate to the new ones.
 - `test_friction.py` only covers `ConstantFriction` and `BlasiusFriction`
 - `ThermalHydraulicCalculator` has no direct unit tests
 - No cross-checking tests between `cooling.py` and `correlations.py`/`friction.py`
-  (bug #1 above would have been caught by a multi-channel integration test)
+- A multi-channel integration test for `outlet_temp_mixed` would catch future
+  regressions in the `specific_heat_outlet` / `getTout` weighting
 
 ---
 
@@ -170,7 +141,6 @@ replace the legacy module or have the legacy functions delegate to the new ones.
 
 | # | File | Line(s) | Fix |
 |---|------|---------|-----|
-| **1** | `thermohydraulics.py` | 355, 460 | `Steam_outlet.cp * Steam_outlet.rho` → `Steam_outlet.cp * 1e3` |
 | 2 | `thermohydraulics.py` | 211, 215 | `if channel.X:` → `if channel.X is not None:` |
 | 3 | `cooling.py` | 65, 81, 97 | Apply `fuzzy`: `return fuzzy * hcorrelation(...)` |
 | 4 | `cooling.py` | 212 | Change `uguess=0` default to `1.0` or guard `U <= 0` |

@@ -114,7 +114,7 @@ class ChannelOutput:
         heat_coeff_distribution: Axial h distribution for gradHZ [W/m²/K]
         temp_distribution: Axial temperature distribution for gradHZ [K]
         density_outlet: Water density at outlet [kg/m³]
-        specific_heat_outlet: Water specific heat at outlet [J/kg/K]
+        specific_heat_outlet: Water specific heat at outlet [kJ/kg/K]
         converged: Whether iteration converged
         iterations: Number of iterations performed
     """
@@ -132,7 +132,7 @@ class ChannelOutput:
     temp_distribution: Optional[List[float]] = None  # K
     
     density_outlet: float = 0.0  # kg/m³
-    specific_heat_outlet: float = 0.0  # J/kg/K
+    specific_heat_outlet: float = 0.0  # kJ/kg/K
     
     converged: bool = True
     iterations: int = 0
