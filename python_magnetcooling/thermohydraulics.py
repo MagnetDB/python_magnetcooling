@@ -119,6 +119,16 @@ class ThermalHydraulicCalculator:
         >>> print(f"Outlet temp: {result.channels[0].temp_outlet:.2f} K")
     """
 
+    # --- Inner velocity-iteration controls ---------------------------------
+    # Maximum number of Darcy-Weisbach / friction-factor iterations.
+    _VELOCITY_MAX_ITER: int = 10
+    # Convergence threshold applied to both relative velocity and relative
+    # friction-factor changes: |1 - x_new/x_old| <= _VELOCITY_TOLERANCE.
+    _VELOCITY_TOLERANCE: float = 1e-3
+    # Starting friction factor used when no better estimate is available.
+    _FRICTION_INITIAL_GUESS: float = 0.055
+    # -----------------------------------------------------------------------
+
     def __init__(self, verbose: bool = False):
         """
         Initialize calculator
@@ -220,6 +230,61 @@ class ThermalHydraulicCalculator:
 
         return self.compute(inputs)
 
+    def _solve_velocity(
+        self,
+        state,
+        dPw_Pa: float,
+        geom,
+        pextra: float,
+        friction_model,
+        U_init: float,
+        f_init: Optional[float] = None,
+    ) -> tuple:
+        """
+        Iteratively solve for water velocity from a known pressure drop.
+
+        Uses the Darcy-Weisbach equation coupled with the chosen friction
+        model.  Iteration stops when both the relative change in velocity
+        and the relative change in friction factor fall below
+        ``_VELOCITY_TOLERANCE``.
+
+        Args:
+            state:         Water thermodynamic state at mean temperature.
+            dPw_Pa:        Pressure drop [Pa].
+            geom:          Channel geometry (hydraulic_diameter, length).
+            pextra:        Additional pressure-loss coefficient.
+            friction_model: OOP friction model instance.
+            U_init:        Initial velocity guess [m/s].
+            f_init:        Initial friction-factor guess (default:
+                           ``_FRICTION_INITIAL_GUESS``).
+
+        Returns:
+            Tuple ``(velocity [m/s], friction_factor)``.
+
+        Raises:
+            RuntimeError: If the loop does not converge within
+                          ``_VELOCITY_MAX_ITER`` iterations.
+        """
+        U = U_init
+        f = f_init if f_init is not None else self._FRICTION_INITIAL_GUESS
+
+        for _ in range(self._VELOCITY_MAX_ITER):
+            Re = state.density * U * geom.hydraulic_diameter / state.dynamic_viscosity
+            nf = friction_model.compute(Re, geom.hydraulic_diameter, f)
+            nU = sqrt(
+                2.0 * dPw_Pa
+                / (state.density * (pextra + nf * geom.length / geom.hydraulic_diameter))
+            )
+            err_U = abs(1 - nU / U) if U > 0 else 1.0
+            err_f = abs(1 - nf / f) if f > 0 else 1.0
+            U, f = nU, nf
+            if err_U <= self._VELOCITY_TOLERANCE and err_f <= self._VELOCITY_TOLERANCE:
+                return U, f
+
+        raise RuntimeError(
+            f"Velocity iteration did not converge within {self._VELOCITY_MAX_ITER} iterations"
+        )
+
     def _compute_channel_uniform(
         self, channel: ChannelInput, global_inputs: ThermalHydraulicInput,
         correlation, friction_model,
@@ -260,21 +325,9 @@ class ThermalHydraulicCalculator:
 
             # Compute new velocity from pressure drop via OOP friction model
             state = steam(T_mean, global_inputs.pressure_inlet)
-            U_iter, f_iter = U, 0.055
-            _ok = False
-            for _ in range(10):
-                Re = state.density * U_iter * geom.hydraulic_diameter / state.dynamic_viscosity
-                nf = friction_model.compute(Re, geom.hydraulic_diameter, f_iter)
-                nU = sqrt(2.0 * dPw_Pa / (state.density * (pextra + nf * geom.length / geom.hydraulic_diameter)))
-                err_U = abs(1 - nU / U_iter) if U_iter > 0 else 1.0
-                err_f = abs(1 - nf / f_iter) if f_iter > 0 else 1.0
-                U_iter, f_iter = nU, nf
-                if err_U <= 1e-3 and err_f <= 1e-3:
-                    _ok = True
-                    break
-            if not _ok:
-                raise RuntimeError("Velocity iteration did not converge")
-            U_new, cf_new = U_iter, f_iter
+            U_new, cf_new = self._solve_velocity(
+                state, dPw_Pa, geom, pextra, friction_model, U, cf
+            )
 
             # Check convergence
             flow_new = U_new * geom.cross_section
@@ -368,25 +421,13 @@ class ThermalHydraulicCalculator:
             # Update velocity via OOP friction model
             T_mean = (T_z[0] + T_z[-1]) / 2.0
             state = steam(T_mean, global_inputs.pressure_inlet)
-            U_iter, f_iter = U, 0.055
-            _ok = False
-            for _ in range(10):
-                Re = state.density * U_iter * geom.hydraulic_diameter / state.dynamic_viscosity
-                nf = friction_model.compute(Re, geom.hydraulic_diameter, f_iter)
-                nU = sqrt(2.0 * dPw_Pa / (state.density * (pextra + nf * geom.length / geom.hydraulic_diameter)))
-                err_U = abs(1 - nU / U_iter) if U_iter > 0 else 1.0
-                err_f = abs(1 - nf / f_iter) if f_iter > 0 else 1.0
-                U_iter, f_iter = nU, nf
-                if err_U <= 1e-3 and err_f <= 1e-3:
-                    _ok = True
-                    break
-            if not _ok:
-                raise RuntimeError("Velocity iteration did not converge")
-            U_new, cf = U_iter, f_iter
+            U_old = U
+            U, cf = self._solve_velocity(
+                state, dPw_Pa, geom, pextra, friction_model, U
+            )
 
             # Check convergence
-            flow_new = U_new * geom.cross_section
-            err_flow = abs(1 - flow_new / (U * geom.cross_section))
+            err_flow = abs(1 - U / U_old) if U_old > 0 else 1.0
             err_temp = max(abs(1 - T_new / T_old) for T_new, T_old in zip(T_z[1:], T_z_old[1:]))
 
             if self.verbose:
@@ -394,8 +435,6 @@ class ThermalHydraulicCalculator:
                     f"  Iter {iteration}: U={U:.3f}, T_out={T_z[-1]:.3f}, "
                     f"err_flow={err_flow:.2e}, err_temp={err_temp:.2e}"
                 )
-
-            U = U_new
 
             if err_flow < global_inputs.tolerance_flow and err_temp < global_inputs.tolerance_temp:
                 converged = True
