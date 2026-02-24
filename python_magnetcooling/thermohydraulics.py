@@ -271,9 +271,13 @@ class ThermalHydraulicCalculator:
         geom = channel.geometry
 
         # Initial guesses
-        U = channel.velocity_guess if channel.velocity_guess else 5.0  # m/s
-        dT = channel.temp_outlet_guess - channel.temp_inlet if channel.temp_outlet_guess else 10.0
-        h = channel.heat_coeff_guess if channel.heat_coeff_guess else 80000.0
+        U = channel.velocity_guess if channel.velocity_guess is not None else 5.0  # m/s
+        dT = (
+            channel.temp_outlet_guess - channel.temp_inlet
+            if channel.temp_outlet_guess is not None
+            else 10.0
+        )
+        h = channel.heat_coeff_guess if channel.heat_coeff_guess is not None else 80000.0
         cf = 0.055
 
         converged = False
@@ -367,7 +371,7 @@ class ThermalHydraulicCalculator:
         h_z = [80000.0] * (n_sections + 1)
 
         # Initial velocity guess
-        U = channel.velocity_guess if channel.velocity_guess else 5.0
+        U = channel.velocity_guess if channel.velocity_guess is not None else 5.0
 
         converged = False
         iteration = 0
