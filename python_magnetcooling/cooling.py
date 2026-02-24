@@ -311,7 +311,7 @@ def hcorrelation(
         Dh,
         L,
         friction,
-        Pextra=1,
+        Pextra=pextra,
         fguess=0.055,
         uguess=U,
         rugosity=rugosity,
