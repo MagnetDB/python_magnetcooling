@@ -445,7 +445,7 @@ class ThermalHydraulicCalculator:
             )
 
             # Check convergence
-            err_flow = abs(1 - U / U_old) if U_old > 0 else 1.0
+            err_flow = abs(1 - U / U_old)
             err_temp = max(abs(1 - T_new / T_old) for T_new, T_old in zip(T_z[1:], T_z_old[1:]))
 
             if self.verbose:
