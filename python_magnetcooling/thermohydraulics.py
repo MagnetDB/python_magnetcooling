@@ -85,7 +85,7 @@ class ChannelOutput:
 
     # Water properties at outlet
     density_outlet: float = 0.0  # kg/m³
-    specific_heat_outlet: float = 0.0  # J/kg/K
+    specific_heat_outlet: float = 0.0  # kJ/kg/K
 
     # Convergence info
     converged: bool = True
@@ -380,8 +380,8 @@ class ThermalHydraulicCalculator:
             temp_rise=dT,
             temp_mean=channel.temp_inlet + dT / 2.0,
             heat_coeff=h,
-            density_outlet=Steam_outlet.density,
-            specific_heat_outlet=Steam_outlet.specific_heat,
+            density_outlet=Steam_outlet.rho,
+            specific_heat_outlet=Steam_outlet.cp,
             converged=converged,
             iterations=iteration + 1,
         )
@@ -485,8 +485,8 @@ class ThermalHydraulicCalculator:
             heat_coeff=np.mean(h_z),
             heat_coeff_distribution=h_z,
             temp_distribution=T_z,
-            density_outlet=Steam_outlet.density,
-            specific_heat_outlet=Steam_outlet.specific_heat,
+            density_outlet=Steam_outlet.rho,
+            specific_heat_outlet=Steam_outlet.cp,
             converged=converged,
             iterations=iteration + 1,
         )
