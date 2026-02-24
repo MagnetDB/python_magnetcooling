@@ -103,7 +103,7 @@ class ThermalHydraulicInput:
 
     # Heat correlation parameters
     heat_correlation: str = "Montgomery"  # Montgomery, Dittus, Colburn, Silverberg
-    friction_model: str = "Constant"  # Constant, Blasius, Filonenko, Colebrook, Swanee
+    friction_model: str = "Constant"  # Constant, Blasius, Filonenko, Colebrook, Swamee
     fuzzy_factor: float = 1.0  # Heat correlation correction factor
     extra_pressure_loss: float = 1.0  # Additional pressure loss coefficient
 
