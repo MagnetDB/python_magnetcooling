@@ -351,8 +351,8 @@ class ThermalHydraulicCalculator:
             temp_rise=dT,
             temp_mean=channel.temp_inlet + dT / 2.0,
             heat_coeff=h,
-            density_outlet=Steam_outlet.rho,
-            specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
+            density_outlet=Steam_outlet.density,
+            specific_heat_outlet=Steam_outlet.specific_heat,
             converged=converged,
             iterations=iteration + 1,
         )
@@ -456,8 +456,8 @@ class ThermalHydraulicCalculator:
             heat_coeff=np.mean(h_z),
             heat_coeff_distribution=h_z,
             temp_distribution=T_z,
-            density_outlet=Steam_outlet.rho,
-            specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
+            density_outlet=Steam_outlet.density,
+            specific_heat_outlet=Steam_outlet.specific_heat,
             converged=converged,
             iterations=iteration + 1,
         )
