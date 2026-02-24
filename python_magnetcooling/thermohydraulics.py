@@ -9,87 +9,9 @@ from dataclasses import dataclass
 from typing import List, Optional
 import numpy as np
 
+from .channel import ChannelGeometry, AxialDiscretization, ChannelInput, ChannelOutput
 from .cooling import steam, Uw, getDT, getHeatCoeff
 from .waterflow import WaterFlow
-
-
-@dataclass
-class ChannelGeometry:
-    """Geometric parameters for a cooling channel"""
-
-    hydraulic_diameter: float  # m
-    cross_section: float  # m²
-    length: float  # m
-    name: str = ""
-
-    def __post_init__(self):
-        if self.hydraulic_diameter <= 0:
-            raise ValueError("Hydraulic diameter must be positive")
-        if self.cross_section <= 0:
-            raise ValueError("Cross section must be positive")
-        if self.length <= 0:
-            raise ValueError("Length must be positive")
-
-
-@dataclass
-class AxialDiscretization:
-    """Axial discretization for gradHZ mode"""
-
-    z_positions: List[float]  # m, axial positions
-    power_distribution: List[float]  # W, power per section
-
-    def __post_init__(self):
-        if len(self.z_positions) != len(self.power_distribution) + 1:
-            raise ValueError(
-                f"z_positions length ({len(self.z_positions)}) must be "
-                f"power_distribution length + 1 ({len(self.power_distribution) + 1})"
-            )
-
-
-@dataclass
-class ChannelInput:
-    """Input parameters for a single cooling channel"""
-
-    geometry: ChannelGeometry
-    power: float  # W, total power dissipated
-    temp_inlet: float  # K, inlet water temperature
-    axial_discretization: Optional[AxialDiscretization] = None
-
-    # Initial guesses (optional, for faster convergence)
-    temp_outlet_guess: Optional[float] = None
-    heat_coeff_guess: Optional[float] = None
-    velocity_guess: Optional[float] = None
-
-
-@dataclass
-class ChannelOutput:
-    """Results for a single cooling channel"""
-
-    # Flow parameters
-    velocity: float  # m/s
-    flow_rate: float  # m³/s
-    friction_factor: float  # dimensionless
-
-    # Thermal parameters
-    temp_inlet: float  # K
-    temp_outlet: float  # K
-    temp_rise: float  # K (outlet - inlet)
-    temp_mean: float  # K (average)
-
-    # Heat transfer
-    heat_coeff: float  # W/m²/K
-    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K
-
-    # Temperature distribution (for gradHZ mode)
-    temp_distribution: Optional[List[float]] = None  # K
-
-    # Water properties at outlet
-    density_outlet: float = 0.0  # kg/m³
-    specific_heat_outlet: float = 0.0  # J/kg/K
-
-    # Convergence info
-    converged: bool = True
-    iterations: int = 0
 
 
 @dataclass
