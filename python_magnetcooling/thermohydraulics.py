@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 import numpy as np
 
-from .cooling import steam, Uw, getDT, getHeatCoeff, getTout
+from .cooling import steam, Uw, getDT, getHeatCoeff
 from .waterflow import WaterFlow
 
 
@@ -128,6 +128,35 @@ class ThermalHydraulicOutput:
     max_error_temp: float = 0.0  # Maximum temperature error
     max_error_heat_coeff: float = 0.0  # Maximum heat coefficient error
     converged: bool = True
+
+
+def compute_mixed_outlet_temperature(
+    temperatures: List[float],
+    densities: List[float],
+    specific_heats: List[float],
+    flow_rates: List[float],
+) -> float:
+    """
+    Compute energy-weighted mixed outlet temperature.
+
+    Formula: T_out = Σ(Tᵢ·ρᵢ·cpᵢ·Q̇ᵢ) / Σ(ρᵢ·cpᵢ·Q̇ᵢ)
+
+    Args:
+        temperatures:  Outlet temperature per channel [K]
+        densities:     Water density per channel [kg/m³]
+        specific_heats: Specific heat per channel [J/kg/K]
+        flow_rates:    Volumetric flow rate per channel [m³/s]
+
+    Returns:
+        Energy-weighted mixed outlet temperature [K]
+    """
+    Tout = 0.0
+    rhoCpQ = 0.0
+    for T, rho, cp, Q in zip(temperatures, densities, specific_heats, flow_rates):
+        weight = rho * cp * Q
+        Tout += T * weight
+        rhoCpQ += weight
+    return Tout / rhoCpQ
 
 
 class ThermalHydraulicCalculator:
@@ -351,8 +380,8 @@ class ThermalHydraulicCalculator:
             temp_rise=dT,
             temp_mean=channel.temp_inlet + dT / 2.0,
             heat_coeff=h,
-            density_outlet=Steam_outlet.rho,
-            specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
+            density_outlet=Steam_outlet.density,
+            specific_heat_outlet=Steam_outlet.specific_heat,
             converged=converged,
             iterations=iteration + 1,
         )
@@ -456,8 +485,8 @@ class ThermalHydraulicCalculator:
             heat_coeff=np.mean(h_z),
             heat_coeff_distribution=h_z,
             temp_distribution=T_z,
-            density_outlet=Steam_outlet.rho,
-            specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
+            density_outlet=Steam_outlet.density,
+            specific_heat_outlet=Steam_outlet.specific_heat,
             converged=converged,
             iterations=iteration + 1,
         )
@@ -465,12 +494,12 @@ class ThermalHydraulicCalculator:
     def _compute_mixed_outlet_temp(self, channels: List[ChannelOutput], pressure: float) -> float:
         """Compute mixed outlet temperature from all channels"""
 
-        T_list = [ch.temp_outlet for ch in channels]
-        rho_list = [ch.density_outlet for ch in channels]
-        cp_list = [ch.specific_heat_outlet for ch in channels]
-        Q_list = [ch.flow_rate for ch in channels]
-
-        return getTout(T_list, rho_list, cp_list, Q_list)
+        return compute_mixed_outlet_temperature(
+            temperatures=[ch.temp_outlet for ch in channels],
+            densities=[ch.density_outlet for ch in channels],
+            specific_heats=[ch.specific_heat_outlet for ch in channels],
+            flow_rates=[ch.flow_rate for ch in channels],
+        )
 
     def _validate_inputs(self, inputs: ThermalHydraulicInput):
         """Validate input parameters"""
