@@ -234,7 +234,7 @@ def Uw(
         nf = friction_method[friction](Re, Dh, f, rugosity)
 
         dPw_Pascal = dPw * 1.0e5
-        nU = sqrt(2 * dPw_Pascal / (Steam.rho * (Pextra + nf * L / Dh)))  # Faux!!!
+        nU = sqrt(2 * dPw_Pascal / (Steam.rho * (Pextra + nf * L / Dh))) 
         error_U = abs(1 - nU / U)
         error_f = abs(1 - nf / f)
         # print(
