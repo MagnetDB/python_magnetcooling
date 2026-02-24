@@ -38,14 +38,14 @@ def Montgomery(
 
     see: Montgomery p38 eq 3.3 Watch out for Unit change
     Original Montgomery formula is given for Length==Centimeter, T in Celsius
-    Here we use Length==Meter, therefore the coefficient change from 0.1426 to 1426.404, 
+    Here we use Length==Meter, therefore the coefficient change from 0.1426 to 1426.404,
     and T is in Kelvin, therefore we add 273 to the formula.
-    
+
     HMFL introduce an additional fuzzy factor
     """
 
     # fuzzy = 1.7
-    h = fuzzy * 1426.404 * (1 + 1.5e-2 * (Tw - 273)) * exp(log(U) * 0.8) / exp(log(Dh) * 0.2)
+    h = fuzzy * 1426.404 * (1 + 1.5e-2 * (Tw - 273.15)) * exp(log(U) * 0.8) / exp(log(Dh) * 0.2)
     # print(f"hcorrelation(Montgomery): h={h}")
     return h
 
@@ -193,7 +193,7 @@ def Colebrook(Re: float, Dh: float, f: float, rugosity: float) -> float:
 
 def Swamee(Re: float, Dh: float, f: float, rugosity: float) -> float:
     def compute_new(val):
-        return 1.3254 / log(rugosity / (3.75 * Dh) + 5.74 / exp(log(Re) * 0.9)) ** 2
+        return 1.325 / log(rugosity / (3.7 * Dh) + 5.74 / exp(log(Re) * 0.9)) ** 2
 
     cf = _iterative_convergence(f, compute_new, method_name="Swamee")
     # print(f"Swamee={cf}")
@@ -234,7 +234,7 @@ def Uw(
         nf = friction_method[friction](Re, Dh, f, rugosity)
 
         dPw_Pascal = dPw * 1.0e5
-        nU = sqrt(2 * dPw_Pascal / (Steam.rho * (Pextra + nf * L / Dh))) 
+        nU = sqrt(2 * dPw_Pascal / (Steam.rho * (Pextra + nf * L / Dh)))
         error_U = abs(1 - nU / U)
         error_f = abs(1 - nf / f)
         # print(
