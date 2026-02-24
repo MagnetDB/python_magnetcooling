@@ -265,6 +265,9 @@ class ThermalHydraulicCalculator:
             RuntimeError: If the loop does not converge within
                           ``_VELOCITY_MAX_ITER`` iterations.
         """
+        assert U_init > 0, f"Initial velocity must be positive [m/s], got {U_init}"
+        assert dPw_Pa > 0, f"Pressure drop must be positive [Pa], got {dPw_Pa}"
+
         U = U_init
         f = f_init if f_init is not None else self._FRICTION_INITIAL_GUESS
 
@@ -303,6 +306,8 @@ class ThermalHydraulicCalculator:
         h = channel.heat_coeff_guess if channel.heat_coeff_guess is not None else 80000.0
         cf = 0.055
 
+        assert U > 0, f"Initial velocity must be positive [m/s], got {U}"
+
         converged = False
         iteration = 0
 
@@ -312,16 +317,19 @@ class ThermalHydraulicCalculator:
         for iteration in range(global_inputs.max_iterations):
             # Current estimates
             T_mean = channel.temp_inlet + dT / 2.0
+            assert T_mean > 0, f"Mean temperature must be positive [K], got {T_mean}"
             flow = U * geom.cross_section
 
             # Compute new temperature rise
             dT_new = getDT(flow, channel.power, T_mean, global_inputs.pressure_inlet)
+            assert dT_new >= 0, f"Temperature rise must be non-negative, got {dT_new}"
 
             # Compute new heat transfer coefficient via OOP correlation
             h_new = correlation.compute(
                 T_mean, global_inputs.pressure_inlet, U,
                 geom.hydraulic_diameter, geom.length,
             )
+            assert h_new > 0, f"Heat transfer coefficient must be positive, got {h_new}"
 
             # Compute new velocity from pressure drop via OOP friction model
             state = steam(T_mean, global_inputs.pressure_inlet)
@@ -329,10 +337,13 @@ class ThermalHydraulicCalculator:
                 state, dPw_Pa, geom, pextra, friction_model, U, cf
             )
 
-            # Check convergence
-            flow_new = U_new * geom.cross_section
-            err_flow = abs(1 - flow_new / flow) if flow > 0 else 1.0
-            err_temp = abs(1 - dT_new / dT) if dT > 0 else 1.0
+            # Check convergence — use absolute outlet temperature (Kelvin) for
+            # err_temp so the criterion is consistent with _compute_channel_axial
+            # and is not artificially sensitive when the temperature rise dT is small.
+            T_outlet_new = channel.temp_inlet + dT_new
+            T_outlet_old = channel.temp_inlet + dT
+            err_flow = abs(1 - U_new / U)
+            err_temp = abs(1 - T_outlet_new / T_outlet_old)
 
             if self.verbose:
                 print(
@@ -386,6 +397,7 @@ class ThermalHydraulicCalculator:
 
         # Initial velocity guess
         U = channel.velocity_guess if channel.velocity_guess is not None else 5.0
+        assert U > 0, f"Initial velocity must be positive [m/s], got {U}"
 
         converged = False
         iteration = 0
@@ -409,6 +421,8 @@ class ThermalHydraulicCalculator:
                 dT_section = getDT(flow, axial.power_distribution[k], T_mean_section, P_local)
                 T_z[k + 1] = T_z[k] + dT_section
 
+            assert all(t > 0 for t in T_z), f"All temperatures must be positive [K], got {T_z}"
+
             # Compute heat coefficient distribution via OOP correlation
             for k in range(len(T_z)):
                 z_frac = (axial.z_positions[k] - axial.z_positions[0]) / z_span
@@ -417,6 +431,8 @@ class ThermalHydraulicCalculator:
                 h_z[k] = correlation.compute(
                     T_z[k], P_local, U, geom.hydraulic_diameter, geom.length,
                 )
+
+            assert all(h > 0 for h in h_z), f"All heat coefficients must be positive, got {h_z}"
 
             # Update velocity via OOP friction model
             T_mean = (T_z[0] + T_z[-1]) / 2.0

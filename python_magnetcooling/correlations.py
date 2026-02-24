@@ -14,6 +14,10 @@ from math import exp, log
 from .water_properties import WaterProperties
 from .exceptions import CorrelationError
 
+# 0 °C expressed in Kelvin.  Used in correlations that were originally
+# defined for temperatures in Celsius (e.g. Montgomery).
+_CELSIUS_ZERO_K: float = 273.15
+
 
 class HeatCorrelation(ABC):
     """Base class for heat transfer correlations"""
@@ -94,10 +98,13 @@ class MontgomeryCorrelation(HeatCorrelation):
         length: float
     ) -> float:
         """Compute heat transfer coefficient using Montgomery correlation"""
-        
+        assert temperature > 0, f"Temperature must be positive [K], got {temperature}"
+        assert velocity > 0, f"Velocity must be positive [m/s], got {velocity}"
+        assert hydraulic_diameter > 0, f"Hydraulic diameter must be positive [m], got {hydraulic_diameter}"
+
         # Convert temperature to Celsius for the correlation
-        temp_celsius = temperature - 273.15
-        
+        temp_celsius = temperature - _CELSIUS_ZERO_K
+
         # Convert Dh to cm for the correlation
         dh_cm = hydraulic_diameter * 100.0
         
@@ -129,7 +136,10 @@ class DittusBoelterCorrelation(HeatCorrelation):
         length: float
     ) -> float:
         """Compute heat transfer coefficient using Dittus-Boelter"""
-        
+        assert temperature > 0, f"Temperature must be positive [K], got {temperature}"
+        assert velocity > 0, f"Velocity must be positive [m/s], got {velocity}"
+        assert hydraulic_diameter > 0, f"Hydraulic diameter must be positive [m], got {hydraulic_diameter}"
+
         state = WaterProperties.get_state(temperature, pressure)
         reynolds = WaterProperties.compute_reynolds(
             velocity, hydraulic_diameter, temperature, pressure
@@ -163,7 +173,10 @@ class ColburnCorrelation(HeatCorrelation):
         length: float
     ) -> float:
         """Compute heat transfer coefficient using Colburn"""
-        
+        assert temperature > 0, f"Temperature must be positive [K], got {temperature}"
+        assert velocity > 0, f"Velocity must be positive [m/s], got {velocity}"
+        assert hydraulic_diameter > 0, f"Hydraulic diameter must be positive [m], got {hydraulic_diameter}"
+
         state = WaterProperties.get_state(temperature, pressure)
         reynolds = WaterProperties.compute_reynolds(
             velocity, hydraulic_diameter, temperature, pressure
@@ -192,7 +205,10 @@ class SilverbergCorrelation(HeatCorrelation):
         length: float
     ) -> float:
         """Compute heat transfer coefficient using Silverberg"""
-        
+        assert temperature > 0, f"Temperature must be positive [K], got {temperature}"
+        assert velocity > 0, f"Velocity must be positive [m/s], got {velocity}"
+        assert hydraulic_diameter > 0, f"Hydraulic diameter must be positive [m], got {hydraulic_diameter}"
+
         state = WaterProperties.get_state(temperature, pressure)
         reynolds = WaterProperties.compute_reynolds(
             velocity, hydraulic_diameter, temperature, pressure
