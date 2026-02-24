@@ -278,8 +278,10 @@ class ThermalHydraulicCalculator:
                 2.0 * dPw_Pa
                 / (state.density * (pextra + nf * geom.length / geom.hydraulic_diameter))
             )
-            err_U = abs(1 - nU / U) if U > 0 else 1.0
-            err_f = abs(1 - nf / f) if f > 0 else 1.0
+            assert nU > 0, f"Velocity from Darcy-Weisbach must be positive, got {nU}"
+            assert nf > 0, f"Friction factor must be positive, got {nf}"
+            err_U = abs(1 - nU / U)
+            err_f = abs(1 - nf / f)
             U, f = nU, nf
             if err_U <= self._VELOCITY_TOLERANCE and err_f <= self._VELOCITY_TOLERANCE:
                 return U, f
