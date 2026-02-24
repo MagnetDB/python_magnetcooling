@@ -8,7 +8,6 @@ water-cooled magnet thermal analysis.
 from dataclasses import dataclass
 from typing import List, Optional
 import numpy as np
-import pandas as pd
 
 from .cooling import steam, Uw, getDT, getHeatCoeff, getTout
 from .waterflow import WaterFlow
@@ -79,7 +78,7 @@ class ChannelOutput:
 
     # Heat transfer
     heat_coeff: float  # W/m²/K
-    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K for gradHZ
+    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K
 
     # Temperature distribution (for gradHZ mode)
     temp_distribution: Optional[List[float]] = None  # K
@@ -349,7 +348,7 @@ class ThermalHydraulicCalculator:
             temp_mean=channel.temp_inlet + dT / 2.0,
             heat_coeff=h,
             density_outlet=Steam_outlet.rho,
-            specific_heat_outlet=Steam_outlet.cp * 1e3,
+            specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
             converged=converged,
             iterations=iteration + 1,
         )
@@ -454,7 +453,7 @@ class ThermalHydraulicCalculator:
             heat_coeff_distribution=h_z,
             temp_distribution=T_z,
             density_outlet=Steam_outlet.rho,
-            specific_heat_outlet=Steam_outlet.cp * 1e3,
+            specific_heat_outlet=Steam_outlet.cp * Steam_outlet.rho,
             converged=converged,
             iterations=iteration + 1,
         )
