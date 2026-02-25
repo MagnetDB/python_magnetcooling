@@ -54,7 +54,7 @@ class FeelppThermalHydraulicAdapter:
 
         th_output = self.calculator.compute(th_input)
 
-        parameters_update = self._extract_parameter_updates(th_output, p_params, args)
+        parameters_update = self._extract_parameter_updates(th_output, p_params, args, parameters, basedir)
         dict_df_update = self._update_dict_df(dict_df, target, th_output, p_params)
 
         return th_output, parameters_update, dict_df_update
@@ -202,6 +202,8 @@ class FeelppThermalHydraulicAdapter:
         th_output: ThermalHydraulicOutput,
         p_params: dict,
         args,
+        parameters: dict = None,
+        basedir: str = "",
     ) -> Dict[str, float]:
         """Extract parameter updates for FeelPP from solver output."""
 
@@ -245,6 +247,34 @@ class FeelppThermalHydraulicAdapter:
                                 channel_out.heat_coeff_distribution,
                             ):
                                 updates[param_name] = h_k
+                                
+                    # Write per-section Tw (and hw for gradHZH) back to the CSV
+                    # that feelpp uses as a boundary-condition table.  Without
+                    # this, the axial temperature profile is stale on the next
+                    # outer iteration.
+                    if parameters is not None and channel_out.temp_rise_distribution is not None:
+                        _TwH_params = p_params.get("TwH", [])
+                        _ch_idx = list(th_output.channels).index(channel_out)
+                        if _ch_idx < len(_TwH_params):
+                            _twh_val = parameters.get(_TwH_params[_ch_idx])
+                            if isinstance(_twh_val, dict):
+                                _csvfile = _twh_val["filename"].replace("$cfgdir", basedir)
+                                _tw_data = pd.read_csv(_csvfile, sep=",")
+                                # Reconstruct absolute Tw from inlet + cumulative rises
+                                _tw_inlet = float(_tw_data["Tw"].iloc[0])
+                                _tw_z = [_tw_inlet]
+                                for _dTw_k in channel_out.temp_rise_distribution:
+                                    _tw_z.append(_tw_z[-1] + _dTw_k)
+                                _tw_data["Tw"] = _tw_z
+                                if (
+                                    cooling_level.has_per_section_h
+                                    and channel_out.heat_coeff_distribution is not None
+                                ):
+                                    _tw_data["hw"] = channel_out.heat_coeff_distribution
+                                elif "hw" in _tw_data.columns:
+                                    _tw_data = _tw_data.drop(columns=["hw"])
+                                _tw_data.to_csv(_csvfile, index=False)
+
                 else:
                     # mean / meanH / gradH: single dTw per channel.
                     if param_dT:
