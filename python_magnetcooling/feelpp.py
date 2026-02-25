@@ -91,6 +91,8 @@ class FeelppThermalHydraulicAdapter:
             # ---- Per-channel mode (any H variant) --------------------------
             TwH = [parameters[p] for p in p_params["TwH"]]
             dTwH = [parameters[p] for p in p_params["dTwH"]]
+            if not dTwH:
+                dTwH = [0.0] * len(Dh)
             hwH = [parameters[p] for p in p_params["hwH"]]
             Lh = [
                 abs(parameters[p] - parameters[p.replace("max", "min")])
