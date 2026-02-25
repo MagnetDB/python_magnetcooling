@@ -269,7 +269,8 @@ class FeelppThermalHydraulicAdapter:
         """Update dict_df with results."""
 
         for i, channel_out in enumerate(th_output.channels):
-            cname = channel_out.geometry.name if hasattr(channel_out, "geometry") else f"ch_{i}"
+            dh_params = p_params.get("Dh", [])
+            cname = dh_params[i].replace("Dh_", "") if i < len(dh_params) else f"ch_{i}"
 
             dict_df[target]["HeatCoeff"][f"hw_{cname}"] = [round(channel_out.heat_coeff, 3)]
             dict_df[target]["DT"][f"dTw_{cname}"] = [round(channel_out.temp_rise, 3)]
