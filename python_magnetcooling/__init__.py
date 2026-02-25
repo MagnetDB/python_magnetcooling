@@ -56,6 +56,7 @@ from .channel import (
     ChannelInput,
     ChannelOutput,
     AxialDiscretization,
+    CoolingLevel,
 )
 from .waterflow import WaterFlow
 from .waterflow_factory import (
@@ -80,6 +81,7 @@ __all__ = [
     "ChannelInput",
     "ChannelOutput",
     "AxialDiscretization",
+    "CoolingLevel",
     # Components
     "WaterFlow",
     "WaterProperties",
