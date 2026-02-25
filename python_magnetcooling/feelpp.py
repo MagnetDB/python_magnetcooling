@@ -75,7 +75,7 @@ class FeelppThermalHydraulicAdapter:
 
         waterflow = targets[target]["waterflow"]
         pressure = waterflow.pressure(objectif)
-        dpressure = waterflow.dpressure(objectif)
+        dpressure = waterflow.pressure_drop(objectif)
 
         Dh = [parameters[p] for p in p_params["Dh"]]
         Sh = [parameters[p] for p in p_params["Sh"]]
