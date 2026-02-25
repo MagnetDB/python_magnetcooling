@@ -23,9 +23,9 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "numpy>=2.0.0",
-    "scipy>=1.14.0",
-    "pandas>=2.2.0",
+    "numpy>=1.24.0,<2.0",
+    "scipy>=1.11.0",
+    "pandas>=2.2.1",
     "iapws>=1.4.0",
     "pint>=0.17.1",
     "ht>=1.2.0",
