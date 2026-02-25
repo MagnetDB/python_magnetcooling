@@ -107,7 +107,12 @@ class FeelppThermalHydraulicAdapter:
                         i, cname, TwH[i], dict_df[target].get("FluxZ"), basedir
                     )
 
-                Tw_inlet = TwH[i] if not isinstance(TwH[i], dict) else TwH[i]["value"]
+                if isinstance(TwH[i], dict):
+                    _csvfile = TwH[i]["filename"].replace("$cfgdir", basedir)
+                    _tw_data = pd.read_csv(_csvfile, sep=",")
+                    Tw_inlet = float(_tw_data["Tw"].iloc[0])
+                else:
+                    Tw_inlet = TwH[i]
                 T_out_guess = (
                     Tw_inlet + dTwH[i] if not isinstance(dTwH[i], dict) else None
                 )
