@@ -164,7 +164,7 @@ class FeelppThermalHydraulicAdapter:
             heat_correlation=args.heatcorrelation,
             friction_model=args.friction,
             fuzzy_factor=targets[target]["fuzzy"],
-            extra_pressure_loss=args.pextra,
+            extra_pressure_loss=targets[target]["pextra"],
             relaxation_factor=targets[target]["relax"],
         )
 
