@@ -27,7 +27,7 @@ dependencies = [
     "scipy>=1.14.0",
     "pandas>=2.2.0",
     "iapws>=1.4.0",
-    "pint>=0.17.1",
+    "pint>=0.24.0",
     "ht>=1.2.0",
 ]
 
