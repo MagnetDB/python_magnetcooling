@@ -150,7 +150,7 @@ if __name__ == "__main__":
         print("TAlimout key not present - set TAlimout=0")
         mrun.getMData().addData("Talim", "TAlimout = 0")
 
-    pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "Pmagnet", "Ptot"]
+    pretreatment_keys = ["flow_secondary", "Flow", "temp_secondary_in", "Tout", "Pmagnet", "Ptot"]
     if "TAlimout" in mrun.getKeys():
         pretreatment_keys.append("TAlimout")
     else:
@@ -191,9 +191,9 @@ if __name__ == "__main__":
     # extract data
     keys = [
         "t",
-        "teb",
-        "tsb",
-        "debitbrut",
+        "temp_secondary_in",
+        "temp_secondary_out",
+        "flow_secondary",
         "Tout",
         "Tin",
         "Flow",

@@ -185,3 +185,54 @@ def from_fitted_data(
         pressure_back=back_pressure,
         current_max=max_current
     )
+
+
+def from_fits(
+    pump_fit: "PumpSpeedFit",
+    flow_pressure_fit: "FlowPressureFit",
+) -> WaterFlow:
+    """
+    Create WaterFlow from fitting result dataclasses.
+    
+    This is the preferred factory method for new code using the typed fitting
+    module. It accepts the structured result objects from fit_hydraulic_system()
+    and constructs a WaterFlow instance.
+    
+    The existing from_flow_params() and from_fitted_data() remain for backward
+    compatibility with the legacy dict and tuple-based formats.
+    
+    Args:
+        pump_fit: PumpSpeedFit object from fit_pump_speed_simple() or
+            fit_pump_speed_piecewise()
+        flow_pressure_fit: FlowPressureFit object from fit_hydraulic_system()
+        
+    Returns:
+        WaterFlow instance configured with the fitted parameters
+        
+    Examples:
+        >>> import numpy as np
+        >>> from python_magnetcooling import fit_hydraulic_system, from_fits
+        >>> 
+        >>> # Fit experimental data
+        >>> current = np.linspace(1000, 28000, 100)
+        >>> pump_speed = 2840 * (current / 28000)**2 + 1000
+        >>> flow = 140 * pump_speed / (2840 + 1000)
+        >>> pressure = 4 + 22 * (pump_speed / (2840 + 1000))**2
+        >>> back_pressure = np.full(100, 4.0)
+        >>> 
+        >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
+        ...     current, pump_speed, flow, pressure, back_pressure,
+        ...     imax=28000, method="simple"
+        ... )
+        >>> 
+        >>> # Create WaterFlow from typed fit results
+        >>> waterflow = from_fits(pump_fit, flow_pressure_fit)
+        >>> print(f"Flow at 20 kA: {waterflow.flow_rate(20000):.6f} m³/s")
+        
+    See Also:
+        build_waterflow: Direct construction from fit results (imported from fitting module)
+        from_flow_params: Legacy dict-based factory method
+        from_fitted_data: Legacy tuple-based factory method
+    """
+    from .fitting import build_waterflow
+    return build_waterflow(pump_fit, flow_pressure_fit)
