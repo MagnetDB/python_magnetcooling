@@ -82,7 +82,8 @@ def Dittus(
 ) -> float:
     """Dittus-Boelter correlation: Nu = 0.023·Re^0.8·Pr^0.4 [W/m²/K]"""
     params = (0.023, 0.8, 0.4)
-    return fuzzy * hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Dittus")
+    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Dittus")
+    return h
 
 
 def Colburn(
@@ -98,7 +99,8 @@ def Colburn(
 ) -> float:
     """Colburn correlation: Nu = 0.023·Re^0.8·Pr^0.3 [W/m²/K]"""
     params = (0.023, 0.8, 0.3)
-    return fuzzy * hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Colburn")
+    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Colburn")
+    return h
 
 
 def Silverberg(
@@ -114,7 +116,8 @@ def Silverberg(
 ) -> float:
     """Silverberg correlation: Nu = 0.015·Re^0.85·Pr^0.3 [W/m²/K]"""
     params = (0.015, 0.85, 0.3)
-    return fuzzy * hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Silverberg")
+    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Silverberg")
+    return h
 
 
 def Constant(Re: float, Dh: float, f: float, rugosity: float) -> float:
