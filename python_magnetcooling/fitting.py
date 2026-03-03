@@ -53,10 +53,11 @@ Usage
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Callable
 import logging
 
 import numpy as np
+from scipy import optimize
 
 logger = logging.getLogger("magnetcooling.fitting")
 
@@ -410,3 +411,420 @@ def _filter_by_threshold(
     filtered = [current[mask]]
     filtered.extend(arr[mask] for arr in arrays)
     return tuple(filtered)
+
+
+# =============================================================================
+# Fitting Helper Functions
+# =============================================================================
+
+
+def _compute_fit_statistics(
+    y_data: np.ndarray,
+    y_fit: np.ndarray,
+    params_covariance: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Compute fit quality statistics.
+
+    Parameters
+    ----------
+    y_data : np.ndarray
+        Observed data values.
+    y_fit : np.ndarray
+        Fitted values from the model.
+    params_covariance : np.ndarray
+        Covariance matrix from curve_fit.
+
+    Returns
+    -------
+    parameters : np.ndarray
+        Fitted parameter values (from covariance matrix dimensions).
+    standard_errors : np.ndarray
+        Standard errors on each parameter.
+    r_squared : float
+        Coefficient of determination (R²).
+    residuals : np.ndarray
+        Residuals (y_data - y_fit).
+
+    Examples
+    --------
+    >>> y_data = np.array([1.0, 2.0, 3.0])
+    >>> y_fit = np.array([1.1, 1.9, 3.1])
+    >>> covariance = np.array([[0.1, 0], [0, 0.2]])
+    >>> _, stderr, r2, resid = _compute_fit_statistics(y_data, y_fit, covariance)
+    >>> r2 > 0.99
+    True
+    """
+    # Calculate standard errors from covariance matrix
+    standard_errors = np.sqrt(np.diag(params_covariance))
+
+    # Calculate residuals
+    residuals = y_data - y_fit
+
+    # Calculate R² (coefficient of determination)
+    ss_res = np.sum(residuals**2)
+    ss_tot = np.sum((y_data - np.mean(y_data)) ** 2)
+    
+    # Avoid division by zero
+    if ss_tot == 0:
+        r_squared = 1.0 if ss_res == 0 else 0.0
+    else:
+        r_squared = 1.0 - (ss_res / ss_tot)
+
+    # Extract parameter values (not returned separately, but used in FitResult)
+    n_params = len(standard_errors)
+    parameters = np.zeros(n_params)  # Placeholder, will be filled by caller
+
+    return parameters, standard_errors, r_squared, residuals
+
+
+def _extract_piecewise_equations(pwlf_model) -> list:
+    """
+    Extract symbolic equations from a pwlf piecewise linear fit.
+
+    This is a port of the find_eqn() function from python_magnetrun.
+    Requires sympy for symbolic manipulation.
+
+    Parameters
+    ----------
+    pwlf_model : pwlf.PiecewiseLinFit
+        Fitted piecewise linear model.
+
+    Returns
+    -------
+    list
+        List of sympy expressions, one for each segment.
+
+    Raises
+    ------
+    ImportError
+        If sympy is not available.
+
+    Notes
+    -----
+    This function uses sympy to create symbolic representations of each
+    piecewise segment. For a degree-2 polynomial, the equation will be
+    of the form: a*x² + b*x + c
+    """
+    try:
+        from sympy import Symbol, symbols
+    except ImportError as e:
+        raise ImportError(
+            "sympy is required for symbolic equation extraction. "
+            "Install it with: pip install sympy"
+        ) from e
+
+    x = Symbol("x")
+    n_segments = pwlf_model.n_segments
+    degree = pwlf_model.degree
+    
+    equations = []
+    
+    # Extract coefficients for each segment
+    # pwlf stores beta coefficients for each polynomial term
+    for seg in range(n_segments):
+        # Build polynomial equation
+        # For degree 2: beta[0] + beta[1]*x + beta[2]*x^2
+        equation = 0
+        for deg in range(degree + 1):
+            idx = seg * (degree + 1) + deg
+            if idx < len(pwlf_model.beta):
+                coeff = pwlf_model.beta[idx]
+                equation += coeff * (x ** deg)
+        
+        equations.append(equation)
+    
+    return equations
+
+
+# =============================================================================
+# Pump Speed Fitting Functions
+# =============================================================================
+
+
+def fit_pump_speed_simple(
+    current: np.ndarray,
+    pump_speed: np.ndarray,
+    imax: float,
+) -> PumpSpeedFit:
+    """
+    Fit pump speed vs current using simple quadratic model.
+
+    Model: Vp(I) = Vpmax·(I/Imax)² + Vp0
+
+    Uses scipy.optimize.curve_fit with a fixed Imax value. This is the
+    simpler method that requires knowing Imax in advance.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A]. Should be filtered (e.g., I >= 300 A).
+    pump_speed : np.ndarray
+        Pump speed values [rpm].
+    imax : float
+        Maximum operating current [A]. Must be known/specified.
+
+    Returns
+    -------
+    PumpSpeedFit
+        Fitted parameters and statistics.
+
+    Raises
+    ------
+    ValueError
+        If arrays are invalid or imax is not positive.
+    RuntimeError
+        If the curve fitting fails to converge.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> # Generate synthetic data
+    >>> current = np.linspace(1000, 28000, 100)
+    >>> pump_speed = 2840 * (current / 28000)**2 + 1000 + np.random.normal(0, 10, 100)
+    >>> fit = fit_pump_speed_simple(current, pump_speed, imax=28000)
+    >>> print(f"Vpmax = {fit.vpmax:.1f} rpm")
+    >>> print(f"Vp0 = {fit.vp0:.1f} rpm")
+    >>> print(f"R² = {fit.fit_result.r_squared:.4f}")
+
+    See Also
+    --------
+    fit_pump_speed_piecewise : Automatic Imax detection using piecewise fitting.
+    """
+    # Validate inputs
+    _validate_array_inputs(current, {"pump_speed": pump_speed})
+    if imax <= 0:
+        raise ValueError(f"imax must be positive, got {imax}")
+
+    logger.debug(f"Fitting pump speed (simple method) with Imax={imax} A")
+
+    # Define the pump speed model
+    def vpump_func(x: np.ndarray, vpmax: float, vp0: float) -> np.ndarray:
+        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
+        return vpmax * (x / imax) ** 2 + vp0
+
+    try:
+        # Perform curve fitting
+        params, params_covariance = optimize.curve_fit(
+            vpump_func, current, pump_speed
+        )
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Curve fitting failed to converge: {e}. "
+            f"Check that your data follows the expected quadratic model."
+        ) from e
+
+    vpmax, vp0 = params
+
+    # Compute fit quality
+    y_fit = vpump_func(current, vpmax, vp0)
+    _, standard_errors, r_squared, residuals = _compute_fit_statistics(
+        pump_speed, y_fit, params_covariance
+    )
+
+    # Create FitResult
+    fit_result = FitResult(
+        parameters=params,
+        standard_errors=standard_errors,
+        r_squared=r_squared,
+        residuals=residuals,
+    )
+
+    logger.info(
+        f"Pump speed fit complete: Vpmax={vpmax:.2f} rpm, Vp0={vp0:.2f} rpm, "
+        f"Imax={imax:.0f} A, R²={r_squared:.6f}"
+    )
+
+    return PumpSpeedFit(
+        vpmax=vpmax,
+        vp0=vp0,
+        imax=imax,
+        imax_detected=False,
+        fit_result=fit_result,
+    )
+
+
+def fit_pump_speed_piecewise(
+    current: np.ndarray,
+    pump_speed: np.ndarray,
+    max_segments: int = 2,
+    degree: int = 2,
+    breakpoint_guess: Optional[float] = None,
+) -> PumpSpeedFit:
+    """
+    Fit pump speed vs current using piecewise linear fitting (pwlf).
+
+    Automatically detects Imax from breakpoints when 2 segments are used.
+    If the second segment is approximately flat (plateau), the breakpoint
+    between segments is reported as the detected Imax.
+
+    This method is more sophisticated than the simple fit and can handle
+    cases where the pump speed saturates at high currents.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A]. Should be filtered (e.g., I >= 300 A).
+    pump_speed : np.ndarray
+        Pump speed values [rpm].
+    max_segments : int, optional
+        Maximum number of segments to try (1 or 2). Default is 2.
+        The function will try 1 segment first, then 2 if needed.
+    degree : int, optional
+        Polynomial degree within each segment. Default is 2 (quadratic).
+    breakpoint_guess : float, optional
+        Initial guess for breakpoint location [A]. If None, pwlf will
+        automatically determine the optimal breakpoint.
+
+    Returns
+    -------
+    PumpSpeedFit
+        Fitted parameters with imax_detected=True if breakpoint detection
+        succeeded. Includes symbolic equations and breakpoints.
+
+    Raises
+    ------
+    ImportError
+        If pwlf or sympy are not installed.
+    ValueError
+        If arrays are invalid or max_segments is not 1 or 2.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> # Generate data with saturation
+    >>> current = np.linspace(1000, 35000, 150)
+    >>> pump_speed = np.where(
+    ...     current < 28000,
+    ...     2840 * (current / 28000)**2 + 1000,
+    ...     3840  # Saturated
+    ... ) + np.random.normal(0, 10, 150)
+    >>> fit = fit_pump_speed_piecewise(current, pump_speed)
+    >>> print(f"Detected Imax = {fit.imax:.0f} A")
+    >>> print(f"Imax detected: {fit.imax_detected}")
+
+    Notes
+    -----
+    The piecewise fitting tries segments sequentially:
+    1. First tries 1 segment (simple polynomial)
+    2. If the fit at the final current is poor (>10 rpm error), tries 2 segments
+    3. With 2 segments, the breakpoint is interpreted as Imax
+
+    See Also
+    --------
+    fit_pump_speed_simple : Simpler method requiring known Imax.
+    """
+    # Validate inputs
+    _validate_array_inputs(current, {"pump_speed": pump_speed})
+    if max_segments not in {1, 2}:
+        raise ValueError(f"max_segments must be 1 or 2, got {max_segments}")
+
+    # Try to import pwlf
+    try:
+        import pwlf
+    except ImportError as e:
+        raise ImportError(
+            "pwlf is required for piecewise fitting. Install it with:\n"
+            "  pip install pwlf\n"
+            "Or install the fitting extras:\n"
+            "  pip install python_magnetcooling[fitting]"
+        ) from e
+
+    logger.debug(
+        f"Fitting pump speed (piecewise method) with max_segments={max_segments}, "
+        f"degree={degree}"
+    )
+
+    # Try segments sequentially
+    best_fit = None
+    best_equations = None
+    
+    for n_segments in range(1, max_segments + 1):
+        logger.debug(f"Trying {n_segments} segment(s)...")
+        
+        # Initialize pwlf model
+        my_pwlf = pwlf.PiecewiseLinFit(current, pump_speed, degree=degree)
+        
+        # Fit with or without breakpoint guess
+        if breakpoint_guess is not None and n_segments == 2:
+            logger.debug(f"Using breakpoint guess: {breakpoint_guess} A")
+            my_pwlf.fit_guess([breakpoint_guess])
+        else:
+            my_pwlf.fit(n_segments)
+        
+        # Extract symbolic equations
+        try:
+            equations = _extract_piecewise_equations(my_pwlf)
+        except ImportError:
+            logger.warning("sympy not available, skipping equation extraction")
+            equations = None
+        
+        # Check fit quality at the final point
+        if equations is not None:
+            from sympy import Symbol
+            x = Symbol("x")
+            final_current = current[-1]
+            final_speed = pump_speed[-1]
+            predicted_speed = float(equations[0].evalf(subs={x: final_current}))
+            error = abs(predicted_speed - final_speed)
+            
+            logger.debug(
+                f"Fit quality check: error at I={final_current:.0f} A is {error:.1f} rpm"
+            )
+            
+            # If error is acceptable or this is the last attempt, use this fit
+            if error <= 10 or n_segments == max_segments:
+                best_fit = my_pwlf
+                best_equations = equations
+                break
+        else:
+            # No equations available, use this fit
+            best_fit = my_pwlf
+            best_equations = None
+            break
+    
+    if best_fit is None:
+        raise RuntimeError("Piecewise fitting failed for all segment configurations")
+    
+    # Extract parameters
+    n_segments = best_fit.n_segments
+    breakpoints_list = list(best_fit.fit_breaks)
+    
+    # Determine Imax
+    if n_segments == 2:
+        # Breakpoint between segments is the detected Imax
+        detected_imax = breakpoints_list[1]
+        imax_detected = True
+        logger.info(f"Detected Imax from breakpoint: {detected_imax:.0f} A")
+    else:
+        # Use the maximum current value as Imax
+        detected_imax = float(current.max())
+        imax_detected = False
+        logger.info(f"Using data maximum as Imax: {detected_imax:.0f} A")
+    
+    # Evaluate Vp0 and Vpmax from the equation
+    if best_equations is not None:
+        from sympy import Symbol
+        x = Symbol("x")
+        vp0 = float(best_equations[0].evalf(subs={x: 0}))
+        vpmax = float(best_equations[0].evalf(subs={x: detected_imax}))
+    else:
+        # Fallback: evaluate using pwlf predict
+        vp0 = float(best_fit.predict(0))
+        vpmax = float(best_fit.predict(detected_imax))
+    
+    logger.info(
+        f"Pump speed fit complete (piecewise): Vpmax={vpmax:.2f} rpm, "
+        f"Vp0={vp0:.2f} rpm, Imax={detected_imax:.0f} A (detected={imax_detected}), "
+        f"segments={n_segments}"
+    )
+    
+    return PumpSpeedFit(
+        vpmax=vpmax,
+        vp0=vp0,
+        imax=detected_imax,
+        imax_detected=imax_detected,
+        fit_result=None,  # pwlf doesn't provide scipy-style covariance
+        breakpoints=breakpoints_list,
+        equations=best_equations,
+    )
