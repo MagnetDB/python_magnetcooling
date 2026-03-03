@@ -217,32 +217,12 @@ The correlations and models have been validated against experimental data from r
 ⚠️ **Important:** Before running tests, install the package with development dependencies:
 
 ```bash
-pip install -e ".[dev]"
-```
-
-Then run the test suite:
-
-```bash
-pytest
-```
-
-With coverage:
-```bash
-pytest --cov=python_magnetcooling --cov-report=html
-```
-
-View the coverage report:
-```bash
-# Linux
-xdg-open htmlcov/index.html
-
-# macOS
-open htmlcov/index.html
+pytest [--cov=python_magnetcooling --cov-report=html]
 ```
 
 For detailed testing instructions, see [TESTING.md](TESTING.md).
 
-### Test Suite Overview
+#### Test Suite Overview
 
 The test suite includes comprehensive tests for:
 
