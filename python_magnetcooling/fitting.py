@@ -828,3 +828,541 @@ def fit_pump_speed_piecewise(
         breakpoints=breakpoints_list,
         equations=best_equations,
     )
+
+
+# =============================================================================
+# Flow Rate and Pressure Fitting Functions
+# =============================================================================
+
+
+def fit_flow_rate(
+    current: np.ndarray,
+    flow_rate: np.ndarray,
+    pump_fit: PumpSpeedFit,
+) -> FitResult:
+    """
+    Fit flow rate vs current.
+
+    Model: F(I) = F0 + Fmax · Vp(I) / (Vpmax + Vp0)
+
+    where Vp(I) is the pump speed model from pump_fit.
+
+    This function fits the flow rate characteristic curve based on the
+    already-fitted pump speed parameters. The flow rate is assumed to be
+    linearly related to the normalized pump speed.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A].
+    flow_rate : np.ndarray
+        Flow rate values [l/s].
+    pump_fit : PumpSpeedFit
+        Previously fitted pump speed parameters.
+
+    Returns
+    -------
+    FitResult
+        Fit statistics with parameters = [F0, Fmax].
+
+    Raises
+    ------
+    ValueError
+        If arrays are invalid or have mismatched lengths.
+    RuntimeError
+        If the curve fitting fails to converge.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from python_magnetcooling.fitting import fit_pump_speed_simple, fit_flow_rate
+    >>> 
+    >>> # First fit pump speed
+    >>> current = np.linspace(1000, 28000, 100)
+    >>> pump_speed = 2840 * (current / 28000)**2 + 1000
+    >>> pump_fit = fit_pump_speed_simple(current, pump_speed, imax=28000)
+    >>> 
+    >>> # Then fit flow rate
+    >>> flow = 140 * pump_speed / (2840 + 1000)
+    >>> flow_fit = fit_flow_rate(current, flow, pump_fit)
+    >>> print(f"F0 = {flow_fit.parameters[0]:.2f} l/s")
+    >>> print(f"Fmax = {flow_fit.parameters[1]:.2f} l/s")
+    >>> print(f"R² = {flow_fit.r_squared:.6f}")
+
+    See Also
+    --------
+    fit_pump_speed_simple : Fit pump speed first.
+    fit_pressure : Fit pressure curve.
+    """
+    # Validate inputs
+    _validate_array_inputs(current, {"flow_rate": flow_rate})
+
+    logger.debug("Fitting flow rate curve")
+
+    # Get pump parameters
+    vpmax = pump_fit.vpmax
+    vp0 = pump_fit.vp0
+    imax = pump_fit.imax
+
+    # Define pump speed function
+    def vpump_func(x: np.ndarray) -> np.ndarray:
+        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
+        return vpmax * (x / imax) ** 2 + vp0
+
+    # Define flow rate model
+    def flow_func(x: np.ndarray, f0: float, fmax: float) -> np.ndarray:
+        """F(I) = F0 + Fmax · Vp(I) / (Vpmax + Vp0)"""
+        vp = vpump_func(x)
+        return f0 + fmax * vp / (vpmax + vp0)
+
+    try:
+        # Perform curve fitting
+        params, params_covariance = optimize.curve_fit(
+            flow_func, current, flow_rate
+        )
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Flow rate curve fitting failed to converge: {e}"
+        ) from e
+
+    f0, fmax = params
+
+    # Compute fit quality
+    y_fit = flow_func(current, f0, fmax)
+    _, standard_errors, r_squared, residuals = _compute_fit_statistics(
+        flow_rate, y_fit, params_covariance
+    )
+
+    logger.info(
+        f"Flow rate fit complete: F0={f0:.2f} l/s, Fmax={fmax:.2f} l/s, "
+        f"R²={r_squared:.6f}"
+    )
+
+    return FitResult(
+        parameters=params,
+        standard_errors=standard_errors,
+        r_squared=r_squared,
+        residuals=residuals,
+    )
+
+
+def fit_pressure(
+    current: np.ndarray,
+    pressure: np.ndarray,
+    pump_fit: PumpSpeedFit,
+) -> FitResult:
+    """
+    Fit inlet pressure vs current.
+
+    Model: P(I) = Pmin + Pmax · [Vp(I) / (Vpmax + Vp0)]²
+
+    where Vp(I) is the pump speed model from pump_fit.
+
+    This function fits the pressure characteristic curve based on the
+    already-fitted pump speed parameters. The pressure is assumed to be
+    quadratically related to the normalized pump speed.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A].
+    pressure : np.ndarray
+        Inlet pressure values [bar].
+    pump_fit : PumpSpeedFit
+        Previously fitted pump speed parameters.
+
+    Returns
+    -------
+    FitResult
+        Fit statistics with parameters = [Pmin, Pmax].
+
+    Raises
+    ------
+    ValueError
+        If arrays are invalid or have mismatched lengths.
+    RuntimeError
+        If the curve fitting fails to converge.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from python_magnetcooling.fitting import fit_pump_speed_simple, fit_pressure
+    >>> 
+    >>> # First fit pump speed
+    >>> current = np.linspace(1000, 28000, 100)
+    >>> pump_speed = 2840 * (current / 28000)**2 + 1000
+    >>> pump_fit = fit_pump_speed_simple(current, pump_speed, imax=28000)
+    >>> 
+    >>> # Then fit pressure
+    >>> vp_ratio = pump_speed / (2840 + 1000)
+    >>> pressure = 4 + 22 * vp_ratio**2
+    >>> pressure_fit = fit_pressure(current, pressure, pump_fit)
+    >>> print(f"Pmin = {pressure_fit.parameters[0]:.2f} bar")
+    >>> print(f"Pmax = {pressure_fit.parameters[1]:.2f} bar")
+    >>> print(f"R² = {pressure_fit.r_squared:.6f}")
+
+    See Also
+    --------
+    fit_pump_speed_simple : Fit pump speed first.
+    fit_flow_rate : Fit flow rate curve.
+    """
+    # Validate inputs
+    _validate_array_inputs(current, {"pressure": pressure})
+
+    logger.debug("Fitting pressure curve")
+
+    # Get pump parameters
+    vpmax = pump_fit.vpmax
+    vp0 = pump_fit.vp0
+    imax = pump_fit.imax
+
+    # Define pump speed function
+    def vpump_func(x: np.ndarray) -> np.ndarray:
+        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
+        return vpmax * (x / imax) ** 2 + vp0
+
+    # Define pressure model
+    def pressure_func(x: np.ndarray, pmin: float, pmax: float) -> np.ndarray:
+        """P(I) = Pmin + Pmax · [Vp(I) / (Vpmax + Vp0)]²"""
+        vp = vpump_func(x)
+        return pmin + pmax * (vp / (vpmax + vp0)) ** 2
+
+    try:
+        # Perform curve fitting
+        params, params_covariance = optimize.curve_fit(
+            pressure_func, current, pressure
+        )
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Pressure curve fitting failed to converge: {e}"
+        ) from e
+
+    pmin, pmax = params
+
+    # Compute fit quality
+    y_fit = pressure_func(current, pmin, pmax)
+    _, standard_errors, r_squared, residuals = _compute_fit_statistics(
+        pressure, y_fit, params_covariance
+    )
+
+    logger.info(
+        f"Pressure fit complete: Pmin={pmin:.2f} bar, Pmax={pmax:.2f} bar, "
+        f"R²={r_squared:.6f}"
+    )
+
+    return FitResult(
+        parameters=params,
+        standard_errors=standard_errors,
+        r_squared=r_squared,
+        residuals=residuals,
+    )
+
+
+def compute_back_pressure_stats(
+    back_pressure: np.ndarray,
+) -> tuple[float, float]:
+    """
+    Compute mean and standard deviation of back pressure.
+
+    Back pressure is typically constant or slowly varying, so we compute
+    statistics rather than fitting a curve.
+
+    Parameters
+    ----------
+    back_pressure : np.ndarray
+        Back pressure measurements [bar].
+
+    Returns
+    -------
+    mean : float
+        Mean back pressure [bar].
+    std : float
+        Standard deviation of back pressure [bar].
+
+    Raises
+    ------
+    ValueError
+        If back_pressure array is invalid or empty.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> back_pressure = np.array([4.0, 4.1, 3.9, 4.0, 4.1])
+    >>> mean, std = compute_back_pressure_stats(back_pressure)
+    >>> print(f"Back pressure: {mean:.2f} ± {std:.2f} bar")
+    Back pressure: 4.02 ± 0.08 bar
+
+    See Also
+    --------
+    fit_hydraulic_system : Complete fitting pipeline.
+    """
+    if not isinstance(back_pressure, np.ndarray):
+        raise ValueError(
+            f"back_pressure must be a numpy array, got {type(back_pressure)}"
+        )
+
+    if len(back_pressure) == 0:
+        raise ValueError("back_pressure array is empty")
+
+    if np.any(~np.isfinite(back_pressure)):
+        raise ValueError("back_pressure array contains NaN or Inf values")
+
+    mean = float(np.mean(back_pressure))
+    std = float(np.std(back_pressure))
+
+    logger.debug(f"Back pressure statistics: mean={mean:.2f} bar, std={std:.4f} bar")
+
+    return mean, std
+
+
+# =============================================================================
+# Orchestration Function
+# =============================================================================
+
+
+def fit_hydraulic_system(
+    current: np.ndarray,
+    pump_speed: np.ndarray,
+    flow_rate: np.ndarray,
+    pressure: np.ndarray,
+    back_pressure: np.ndarray,
+    imax: Optional[float] = None,
+    method: str = "simple",
+    current_threshold: float = 300.0,
+) -> tuple[PumpSpeedFit, FlowPressureFit]:
+    """
+    Complete fitting pipeline: pump speed → flow → pressure → back pressure.
+
+    This is the main entry point for fitting all hydraulic curves from
+    experimental arrays. It orchestrates the entire fitting workflow:
+    1. Filter data by current threshold
+    2. Fit pump speed curve
+    3. Fit flow rate curve (using pump parameters)
+    4. Fit pressure curve (using pump parameters)
+    5. Compute back pressure statistics
+    6. Return typed result objects
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A].
+    pump_speed : np.ndarray
+        Pump speed values [rpm].
+    flow_rate : np.ndarray
+        Flow rate values [l/s].
+    pressure : np.ndarray
+        Inlet pressure values [bar].
+    back_pressure : np.ndarray
+        Back pressure values [bar].
+    imax : float, optional
+        Maximum current [A]. Required if method="simple".
+        Auto-detected if method="piecewise" and not provided.
+    method : str, optional
+        Fitting method: "simple" (scipy quadratic) or "piecewise" (pwlf with
+        breakpoint detection). Default is "simple".
+    current_threshold : float, optional
+        Minimum current threshold [A] for filtering data. Default is 300 A.
+        Data points with current < threshold are excluded from fitting.
+
+    Returns
+    -------
+    pump_fit : PumpSpeedFit
+        Pump speed fit results.
+    flow_pressure_fit : FlowPressureFit
+        Combined flow rate and pressure fit results.
+
+    Raises
+    ------
+    ValueError
+        If arrays are invalid, have mismatched lengths, or method is invalid.
+    RuntimeError
+        If any curve fitting fails to converge.
+    ImportError
+        If method="piecewise" but pwlf is not installed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from python_magnetcooling.fitting import fit_hydraulic_system
+    >>> 
+    >>> # Generate synthetic data
+    >>> np.random.seed(42)
+    >>> current = np.linspace(500, 28000, 200)
+    >>> pump_speed = 2840 * (current / 28000)**2 + 1000 + np.random.normal(0, 20, 200)
+    >>> vp_ratio = pump_speed / (2840 + 1000)
+    >>> flow = 140 * vp_ratio + np.random.normal(0, 1, 200)
+    >>> pressure = 4 + 22 * vp_ratio**2 + np.random.normal(0, 0.5, 200)
+    >>> back_pressure = np.full(200, 4.0) + np.random.normal(0, 0.1, 200)
+    >>> 
+    >>> # Fit all curves at once
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
+    ...     current, pump_speed, flow, pressure, back_pressure,
+    ...     imax=28000, method="simple", current_threshold=300
+    ... )
+    >>> 
+    >>> print(f"Pump: Vpmax={pump_fit.vpmax:.1f} rpm, Vp0={pump_fit.vp0:.1f} rpm")
+    >>> print(f"Flow: F0={flow_pressure_fit.f0:.1f} l/s, Fmax={flow_pressure_fit.fmax:.1f} l/s")
+    >>> print(f"Pressure: Pmin={flow_pressure_fit.pmin:.1f} bar, Pmax={flow_pressure_fit.pmax:.1f} bar")
+    >>> print(f"Back pressure: {flow_pressure_fit.back_pressure:.1f} ± {flow_pressure_fit.back_pressure_std:.2f} bar")
+
+    See Also
+    --------
+    fit_pump_speed_simple : Simple pump speed fitting.
+    fit_pump_speed_piecewise : Advanced pump speed fitting with Imax detection.
+    build_waterflow : Create WaterFlow object from fit results.
+    """
+    # Validate method selection
+    _validate_method(method)
+    _validate_imax(imax, method)
+
+    logger.info(
+        f"Starting hydraulic system fitting (method={method}, "
+        f"threshold={current_threshold} A)"
+    )
+
+    # Validate all input arrays (before filtering)
+    _validate_array_inputs(
+        current,
+        {
+            "pump_speed": pump_speed,
+            "flow_rate": flow_rate,
+            "pressure": pressure,
+            "back_pressure": back_pressure,
+        },
+    )
+
+    # Filter data by current threshold
+    current_filtered, pump_speed_filtered, flow_rate_filtered, pressure_filtered, back_pressure_filtered = _filter_by_threshold(
+        current, current_threshold, pump_speed, flow_rate, pressure, back_pressure
+    )
+
+    logger.info(f"Data filtered: {len(current)} → {len(current_filtered)} points")
+
+    # Step 1: Fit pump speed curve
+    if method == "simple":
+        pump_fit = fit_pump_speed_simple(
+            current_filtered, pump_speed_filtered, imax=imax
+        )
+    elif method == "piecewise":
+        pump_fit = fit_pump_speed_piecewise(
+            current_filtered, pump_speed_filtered, max_segments=2
+        )
+    else:
+        # Should never reach here due to _validate_method
+        raise ValueError(f"Invalid method: {method}")
+
+    # Step 2: Fit flow rate curve
+    flow_fit = fit_flow_rate(current_filtered, flow_rate_filtered, pump_fit)
+
+    # Step 3: Fit pressure curve
+    pressure_fit = fit_pressure(current_filtered, pressure_filtered, pump_fit)
+
+    # Step 4: Compute back pressure statistics
+    bp_mean, bp_std = compute_back_pressure_stats(back_pressure_filtered)
+
+    # Build combined result
+    flow_pressure_fit = FlowPressureFit(
+        f0=flow_fit.parameters[0],
+        fmax=flow_fit.parameters[1],
+        pmin=pressure_fit.parameters[0],
+        pmax=pressure_fit.parameters[1],
+        back_pressure=bp_mean,
+        back_pressure_std=bp_std,
+        flow_fit=flow_fit,
+        pressure_fit=pressure_fit,
+    )
+
+    logger.info(
+        f"Hydraulic system fitting complete. "
+        f"Pump R²={pump_fit.fit_result.r_squared if pump_fit.fit_result else 'N/A':.4f}, "
+        f"Flow R²={flow_fit.r_squared:.4f}, "
+        f"Pressure R²={pressure_fit.r_squared:.4f}"
+    )
+
+    return pump_fit, flow_pressure_fit
+
+
+# =============================================================================
+# WaterFlow Construction
+# =============================================================================
+
+
+def build_waterflow(
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
+) -> "WaterFlow":
+    """
+    Construct a WaterFlow object from fitted parameters.
+
+    This function replaces manual dict construction and provides a typed
+    path from fit results to WaterFlow objects. It maps the fitted hydraulic
+    parameters to WaterFlow constructor arguments.
+
+    Parameters
+    ----------
+    pump_fit : PumpSpeedFit
+        Pump speed fit results.
+    flow_pressure_fit : FlowPressureFit
+        Flow rate and pressure fit results.
+
+    Returns
+    -------
+    WaterFlow
+        Configured WaterFlow instance ready for hydraulic calculations.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from python_magnetcooling.fitting import fit_hydraulic_system, build_waterflow
+    >>> 
+    >>> # Generate and fit synthetic data
+    >>> current = np.linspace(1000, 28000, 100)
+    >>> pump_speed = 2840 * (current / 28000)**2 + 1000
+    >>> vp_ratio = pump_speed / (2840 + 1000)
+    >>> flow = 140 * vp_ratio
+    >>> pressure = 4 + 22 * vp_ratio**2
+    >>> back_pressure = np.full(100, 4.0)
+    >>> 
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
+    ...     current, pump_speed, flow, pressure, back_pressure,
+    ...     imax=28000, method="simple"
+    ... )
+    >>> 
+    >>> # Build WaterFlow object
+    >>> waterflow = build_waterflow(pump_fit, flow_pressure_fit)
+    >>> print(f"Max flow: {waterflow.flow_max:.1f} l/s")
+    >>> print(f"Max pressure: {waterflow.pressure_max:.1f} bar")
+    >>> 
+    >>> # Use it for calculations
+    >>> flow_at_20kA = waterflow.flow_rate(20000)
+    >>> print(f"Flow at 20 kA: {flow_at_20kA:.2f} m³/s")
+
+    See Also
+    --------
+    fit_hydraulic_system : Fit all curves from experimental data.
+    waterflow_factory.from_fits : Alternative factory method.
+    """
+    from .waterflow import WaterFlow
+
+    logger.debug("Building WaterFlow object from fit results")
+
+    waterflow = WaterFlow(
+        pump_speed_min=pump_fit.vp0,
+        pump_speed_max=pump_fit.vpmax,
+        flow_min=flow_pressure_fit.f0,
+        flow_max=flow_pressure_fit.fmax,
+        pressure_max=flow_pressure_fit.pmax,
+        pressure_min=flow_pressure_fit.pmin,
+        pressure_back=flow_pressure_fit.back_pressure,
+        current_max=pump_fit.imax,
+    )
+
+    logger.info(
+        f"WaterFlow object created: "
+        f"pump {waterflow.pump_speed_min}-{waterflow.pump_speed_max} rpm, "
+        f"flow {waterflow.flow_min}-{waterflow.flow_max} l/s, "
+        f"pressure {waterflow.pressure_min}-{waterflow.pressure_max} bar, "
+        f"Imax {waterflow.current_max} A"
+    )
+
+    return waterflow
