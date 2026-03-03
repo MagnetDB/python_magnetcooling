@@ -6,6 +6,7 @@ Implements various Nusselt number correlations:
 - Dittus-Boelter: Classic turbulent correlation
 - Colburn: Modified Dittus-Boelter
 - Silverberg: High heat flux correlation
+- Gnielinski: Improved turbulent correlation (more accurate near transition)
 """
 
 from abc import ABC, abstractmethod
@@ -141,8 +142,8 @@ class DittusBoelterCorrelation(HeatCorrelation):
             )
         
         nusselt = self.compute_nusselt(reynolds, state.prandtl, 0.023, 0.8, 0.4)
-        h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
-        
+        h = nusselt * state.thermal_conductivity / hydraulic_diameter
+
         return h
 
 
@@ -170,8 +171,8 @@ class ColburnCorrelation(HeatCorrelation):
         )
         
         nusselt = self.compute_nusselt(reynolds, state.prandtl, 0.023, 0.8, 0.3)
-        h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
-        
+        h = nusselt * state.thermal_conductivity / hydraulic_diameter
+
         return h
 
 
@@ -199,6 +200,70 @@ class SilverbergCorrelation(HeatCorrelation):
         )
         
         nusselt = self.compute_nusselt(reynolds, state.prandtl, 0.015, 0.85, 0.3)
+        h = nusselt * state.thermal_conductivity / hydraulic_diameter
+
+        return h
+
+
+class GnielinskiCorrelation(HeatCorrelation):
+    """
+    Gnielinski correlation for turbulent flow in smooth pipes
+    
+    Nu = (f/8)(Re - 1000)Pr / [1 + 12.7(f/8)^0.5(Pr^(2/3) - 1)]
+    
+    where f is the friction factor (Petukhov: f = (0.79·ln(Re) - 1.64)^(-2))
+    
+    Reference: Gnielinski, V. (1976). "New equations for heat and mass transfer 
+    in turbulent pipe and channel flow." Int. Chem. Eng., 16(2), 359-368.
+    
+    Valid for:
+    - 0.5 < Pr < 2000
+    - 3000 < Re < 5×10^6
+    - Smooth pipes
+    
+    More accurate than Dittus-Boelter, especially near transition region.
+    """
+    
+    def compute(
+        self,
+        temperature: float,
+        pressure: float,
+        velocity: float,
+        hydraulic_diameter: float,
+        length: float
+    ) -> float:
+        """Compute heat transfer coefficient using Gnielinski correlation"""
+        
+        state = WaterProperties.get_state(temperature, pressure)
+        reynolds = WaterProperties.compute_reynolds(
+            velocity, hydraulic_diameter, temperature, pressure
+        )
+        
+        if reynolds < 3000:
+            raise CorrelationError(
+                f"Gnielinski not valid for Re={reynolds:.0f} < 3000 (use laminar correlation)"
+            )
+        
+        if reynolds > 5e6:
+            raise CorrelationError(
+                f"Gnielinski not recommended for Re={reynolds:.0f} > 5×10^6"
+            )
+        
+        prandtl = state.prandtl
+        
+        if prandtl < 0.5 or prandtl > 2000:
+            raise CorrelationError(
+                f"Gnielinski not valid for Pr={prandtl:.2f} outside range [0.5, 2000]"
+            )
+        
+        # Petukhov friction factor for smooth pipes
+        f = (0.79 * log(reynolds) - 1.64) ** (-2)
+        
+        # Gnielinski Nusselt number
+        numerator = (f / 8.0) * (reynolds - 1000) * prandtl
+        denominator = 1.0 + 12.7 * (f / 8.0) ** 0.5 * (prandtl ** (2.0/3.0) - 1.0)
+        nusselt = numerator / denominator
+        
         h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
         
         return h
@@ -210,6 +275,7 @@ _CORRELATIONS: Dict[str, Type[HeatCorrelation]] = {
     "Dittus": DittusBoelterCorrelation,
     "Colburn": ColburnCorrelation,
     "Silverberg": SilverbergCorrelation,
+    "Gnielinski": GnielinskiCorrelation,
 }
 
 
@@ -218,7 +284,7 @@ def get_correlation(name: str, fuzzy_factor: float = 1.0) -> HeatCorrelation:
     Get heat transfer correlation by name
     
     Args:
-        name: Correlation name (Montgomery, Dittus, Colburn, Silverberg)
+        name: Correlation name (Montgomery, Dittus, Colburn, Silverberg, Gnielinski)
         fuzzy_factor: Empirical correction factor
         
     Returns:

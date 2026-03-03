@@ -3,7 +3,52 @@ Channel geometry and data structures for thermal-hydraulic calculations.
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import List, Optional
+
+
+class CoolingLevel(str, Enum):
+    """
+    Cooling model hierarchy for water-cooled magnets.
+
+    Six levels of increasing physical detail:
+
+    mean    – calorimetric ΔT, global h at mean T. U fixed from pump curve Q(I).
+    meanH   – same per cooling channel; Q distributed ∝ Sh.
+    grad    – U from pressure-drop friction equation, global h at mean T.
+    gradH   – same per cooling channel, each sees the common ΔP.
+    gradHZ  – per channel + axial power distribution; one mean h per channel.
+    gradHZH – same, but one h per axial section (for feelpp boundary conditions).
+
+    The string value matches the ``--cooling`` CLI argument used by feelpp.
+    """
+
+    MEAN = "mean"
+    MEAN_H = "meanH"
+    GRAD = "grad"
+    GRAD_H = "gradH"
+    GRAD_HZ = "gradHZ"
+    GRAD_HZH = "gradHZH"
+
+    @property
+    def is_per_channel(self) -> bool:
+        """True when calculation is done channel-by-channel (H suffix)."""
+        return "H" in self.value
+
+    @property
+    def is_axial(self) -> bool:
+        """True when axial power distribution is resolved (Z suffix)."""
+        return "Z" in self.value
+
+    @property
+    def is_mean(self) -> bool:
+        """True when U comes from the pump-curve flow rate (non-iterative)."""
+        return self.value.startswith("mean")
+
+    @property
+    def has_per_section_h(self) -> bool:
+        """True when a heat coefficient is required per axial section."""
+        return self == CoolingLevel.GRAD_HZH
 
 
 @dataclass
@@ -112,8 +157,7 @@ class ChannelOutput:
         temp_mean: Mean temperature [K]
         heat_coeff: Heat transfer coefficient [W/m²/K]
         heat_coeff_distribution: Axial h distribution for gradHZ [W/m²/K]
-        temp_distribution: Axial temperature distribution for gradHZ [K]
-        density_outlet: Water density at outlet [kg/m³]
+density_outlet: Water density at outlet [kg/m³]
         specific_heat_outlet: Water specific heat at outlet [kJ/kg/K]
         converged: Whether iteration converged
         iterations: Number of iterations performed
@@ -128,11 +172,16 @@ class ChannelOutput:
     temp_mean: float  # K
     
     heat_coeff: float  # W/m²/K
-    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K
-    temp_distribution: Optional[List[float]] = None  # K
-    
+    # gradHZH only: one h per axial section (n values). None for all other levels.
+    heat_coeff_distribution: Optional[List[float]] = None  # W/m²/K per section
+
+    # gradHZ / gradHZH: n per-section temperature rises [dTw_0, …, dTw_{n-1}].
+    # feelpp reconstructs local Tw at section k as: T_in + sum(dTw_0..dTw_{k-1}).
+    # None for non-axial levels (mean, meanH, grad, gradH).
+    temp_rise_distribution: Optional[List[float]] = None  # K per section
+
     density_outlet: float = 0.0  # kg/m³
     specific_heat_outlet: float = 0.0  # kJ/kg/K
-    
+
     converged: bool = True
     iterations: int = 0

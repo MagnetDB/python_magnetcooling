@@ -18,7 +18,30 @@ from .exceptions import (
 from .heat_exchanger_config import HeatExchangerConfig, DEFAULT_HX_CONFIG
 
 
-# Plotting helper function
+# Plotting helper functions
+def _get_matplotlib():
+    """Get matplotlib pyplot with optional LaTeX support.
+
+    Returns:
+        matplotlib.pyplot module or None if matplotlib is not available
+    """
+    try:
+        import matplotlib
+
+        # Make LaTeX optional
+        try:
+            matplotlib.rcParams["text.usetex"] = True
+        except Exception:
+            pass  # LaTeX not available, use default rendering
+
+        import matplotlib.pyplot as plt
+        return plt
+
+    except Exception:
+        print("Warning: Matplotlib not available")
+        return None
+
+
 def _create_plot(
     df: pd.DataFrame,
     x_col: str,
@@ -43,19 +66,8 @@ def _create_plot(
         save_path: Path to save plot (if not showing)
         grid: Show grid
     """
-    try:
-        import matplotlib
-
-        # Make LaTeX optional
-        try:
-            matplotlib.rcParams["text.usetex"] = True
-        except Exception:
-            pass  # LaTeX not available, use default rendering
-
-        import matplotlib.pyplot as plt
-
-    except Exception:
-        print("_create_plot: Matplotlib not available")
+    plt = _get_matplotlib()
+    if plt is None:
         return
 
     fig, ax = plt.subplots()
@@ -173,7 +185,11 @@ def calculate_heat_profiles(
     """Calculate heat transfer profiles for the cooling system.
 
     Args:
-        df: DataFrame with required columns (teb, Thi, debitbrut, Flowhot, BP, Flow, Tout, HP, Tin, etc.)
+        df: DataFrame with required columns:
+            - teb: Secondary loop inlet temperature (temp_secondary_in in new code)
+            - Thi: Primary loop hot side inlet temperature
+            - debitbrut: Secondary loop flow rate (flow_secondary in new code) [m³/h]
+            - Flowhot, BP, Flow, Tout, HP, Tin: Other cooling parameters
         debit_alim: Cooling flow rate (m³/h)
         ohtc: Overall heat transfer coefficient (W/m²/K) or None to use computed values from df['Ohtc']
 
@@ -386,8 +402,13 @@ def calculate_temperature_profiles(
     """Calculate temperature profiles through heat exchanger.
 
     Args:
-        df: DataFrame with required columns (teb, Thi, debitbrut, Flowhot, BP, Ohtc if ohtc is None)
-        tsb_key: Column name for outlet cold side temperature
+        df: DataFrame with required columns:
+            - teb: Secondary loop inlet temperature (temp_secondary_in in new code)
+            - Thi: Primary loop hot side inlet temperature
+            - debitbrut: Secondary loop flow rate (flow_secondary in new code) [m³/h]
+            - Flowhot, BP: Other flow parameters
+            - Ohtc: Overall heat transfer coefficient (if ohtc parameter is None)
+        tsb_key: Column name for outlet cold side temperature (temp_secondary_out in new code)
         tin_key: Column name for inlet hot side temperature
         ohtc: Heat transfer coefficient or None to use df['Ohtc']
         debug: Enable debug output

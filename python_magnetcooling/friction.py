@@ -192,6 +192,103 @@ class SwameeFriction(FrictionModel):
         return f
 
 
+class RoughPipeFriction(FrictionModel):
+    """
+    Rough pipe correlation (implicit)
+    
+    1/√f = -2.00·log₁₀(2.51/(Re·√f)·(1 + r*/3.3))
+    
+    where r* = (Re·√f/√8)·(ε/D_h) is the roughness Reynolds number
+    
+    Valid for rough pipes with surface roughness.
+    """
+    
+    def __init__(self, roughness: float = 2.5e-5, **kwargs):
+        """
+        Initialize rough pipe friction model
+        
+        Args:
+            roughness: Surface roughness [m] (default: 0.025 mm)
+            **kwargs: Additional arguments for base class
+        """
+        super().__init__(roughness=roughness, **kwargs)
+    
+    def compute(
+        self,
+        reynolds: float,
+        hydraulic_diameter: float,
+        friction_guess: float = 0.055
+    ) -> float:
+        """Compute friction factor for rough pipes (iterative)"""
+        
+        if reynolds < 2300:
+            return 64.0 / reynolds
+        
+        eps = self.roughness
+        
+        # Iterative solution
+        f = friction_guess
+        max_iter = 20
+        tolerance = 1e-6
+        
+        for i in range(max_iter):
+            # Roughness Reynolds number
+            rstar = (reynolds * sqrt(f) / sqrt(8.0)) * eps / hydraulic_diameter
+            
+            # Rough pipe correlation
+            f_new = (-2.0 * log10(2.51 / (reynolds * sqrt(f)) * (1.0 + rstar / 3.3))) ** (-2)
+            
+            error = abs(f_new - f) / f
+            f = f_new
+            
+            if error < tolerance:
+                return f
+        
+        raise FrictionError(
+            f"Rough pipe iteration did not converge after {max_iter} iterations"
+        )
+
+
+class KarmanFriction(FrictionModel):
+    """
+    Karman-Nikuradse correlation for smooth pipes (implicit)
+    
+    1/√f = 1.93·log₁₀(Re·√f) - 0.537
+    
+    Solved iteratively. More accurate than Blasius for high Reynolds numbers.
+    Valid for: Re > 10⁴
+    """
+    
+    def compute(
+        self,
+        reynolds: float,
+        hydraulic_diameter: float,
+        friction_guess: float = 0.055
+    ) -> float:
+        """Compute friction factor using Karman-Nikuradse (iterative)"""
+        
+        if reynolds < 2300:
+            return 64.0 / reynolds
+        
+        # Iterative solution
+        f = friction_guess
+        max_iter = 20
+        tolerance = 1e-6
+        
+        for i in range(max_iter):
+            f_new = (1.93 * log10(reynolds * sqrt(f)) - 0.537) ** (-2)
+            
+            error = abs(f_new - f) / f
+            f = f_new
+            
+            if error < tolerance:
+                return f
+        
+        raise FrictionError(
+            f"Karman iteration did not converge after {max_iter} iterations"
+        )
+
+
 # Registry of available friction models
 _FRICTION_MODELS: Dict[str, Type[FrictionModel]] = {
     "Constant": ConstantFriction,
@@ -199,6 +296,8 @@ _FRICTION_MODELS: Dict[str, Type[FrictionModel]] = {
     "Filonenko": FilonenkoFriction,
     "Colebrook": ColebrookFriction,
     "Swamee": SwameeFriction,
+    "Karman": KarmanFriction,
+    "Rough": RoughPipeFriction,
 }
 
 
@@ -211,7 +310,7 @@ def get_friction_model(
     Get friction model by name
     
     Args:
-        name: Model name (Constant, Blasius, Filonenko, Colebrook, Swamee)
+        name: Model name (Constant, Blasius, Filonenko, Colebrook, Swamee, Karman, Rough)
         roughness: Surface roughness [m]
         constant_value: Value for Constant model
         

@@ -4,6 +4,8 @@ import pytest
 from python_magnetcooling.correlations import (
     HeatCorrelation,
     MontgomeryCorrelation,
+    GnielinskiCorrelation,
+    get_correlation,
 )
 from python_magnetcooling.exceptions import CorrelationError
 
@@ -96,6 +98,145 @@ class TestMontgomeryCorrelation:
         """Test that fuzzy factor affects the result"""
         corr1 = MontgomeryCorrelation(fuzzy_factor=1.0)
         corr2 = MontgomeryCorrelation(fuzzy_factor=1.5)
+
+        h1 = corr1.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=typical_flow_conditions["velocity"],
+            hydraulic_diameter=typical_flow_conditions["hydraulic_diameter"],
+            length=typical_flow_conditions["length"],
+        )
+
+        h2 = corr2.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=typical_flow_conditions["velocity"],
+            hydraulic_diameter=typical_flow_conditions["hydraulic_diameter"],
+            length=typical_flow_conditions["length"],
+        )
+
+        # h2 should be 1.5 times h1
+        assert h2 > h1
+        assert abs(h2 / h1 - 1.5) < 0.01
+
+
+class TestGnielinskiCorrelation:
+    """Test Gnielinski correlation for heat transfer"""
+
+    def test_gnielinski_initialization(self):
+        """Test Gnielinski correlation initialization"""
+        corr = GnielinskiCorrelation()
+        assert corr.fuzzy_factor == 1.0
+
+        corr_fuzzy = GnielinskiCorrelation(fuzzy_factor=1.2)
+        assert corr_fuzzy.fuzzy_factor == 1.2
+
+    def test_gnielinski_compute(self, standard_water_conditions, typical_flow_conditions):
+        """Test Gnielinski heat transfer coefficient calculation"""
+        corr = GnielinskiCorrelation()
+
+        h = corr.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=typical_flow_conditions["velocity"],
+            hydraulic_diameter=typical_flow_conditions["hydraulic_diameter"],
+            length=typical_flow_conditions["length"],
+        )
+
+        # Heat transfer coefficient should be positive and reasonable
+        assert h > 0
+        assert h > 100  # Minimum reasonable value
+        assert h < 1e6  # Maximum reasonable value
+
+    def test_gnielinski_reynolds_validation(self, standard_water_conditions):
+        """Test that Gnielinski rejects low Reynolds numbers"""
+        corr = GnielinskiCorrelation()
+
+        # Low velocity should give low Re
+        with pytest.raises(CorrelationError, match="not valid for Re"):
+            corr.compute(
+                temperature=standard_water_conditions["temperature"],
+                pressure=standard_water_conditions["pressure"],
+                velocity=0.01,  # Very low velocity
+                hydraulic_diameter=0.01,
+                length=1.0,
+            )
+
+    def test_gnielinski_increases_with_velocity(self, standard_water_conditions):
+        """Test that h increases with velocity"""
+        corr = GnielinskiCorrelation()
+
+        h_low = corr.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=2.0,
+            hydraulic_diameter=0.01,
+            length=1.0,
+        )
+
+        h_high = corr.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=5.0,
+            hydraulic_diameter=0.01,
+            length=1.0,
+        )
+
+        assert h_high > h_low
+
+    def test_gnielinski_vs_dittus_boelter(self, standard_water_conditions, typical_flow_conditions):
+        """Test that Gnielinski gives similar but different results from Dittus-Boelter"""
+        from python_magnetcooling.correlations import DittusBoelterCorrelation
+        
+        gnielinski = GnielinskiCorrelation()
+        dittus = DittusBoelterCorrelation()
+
+        h_gn = gnielinski.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=typical_flow_conditions["velocity"],
+            hydraulic_diameter=typical_flow_conditions["hydraulic_diameter"],
+            length=typical_flow_conditions["length"],
+        )
+
+        h_db = dittus.compute(
+            temperature=standard_water_conditions["temperature"],
+            pressure=standard_water_conditions["pressure"],
+            velocity=typical_flow_conditions["velocity"],
+            hydraulic_diameter=typical_flow_conditions["hydraulic_diameter"],
+            length=typical_flow_conditions["length"],
+        )
+
+        # Should be in the same ballpark but not identical
+        assert h_gn > 0
+        assert h_db > 0
+        relative_diff = abs(h_gn - h_db) / h_db
+        assert 0.01 < relative_diff < 0.5  # Within 1-50% difference
+
+
+class TestCorrelationRegistry:
+    """Test correlation registry and get_correlation function"""
+
+    def test_get_gnielinski_correlation(self):
+        """Test getting Gnielinski correlation from registry"""
+        corr = get_correlation('Gnielinski')
+        assert isinstance(corr, GnielinskiCorrelation)
+
+    def test_all_correlations_available(self):
+        """Test that all correlations are in available list"""
+        from python_magnetcooling.correlations import available_correlations
+
+        correlations = available_correlations()
+        assert 'Gnielinski' in correlations
+        assert 'Montgomery' in correlations
+        assert 'Dittus' in correlations
+        assert 'Colburn' in correlations
+        assert 'Silverberg' in correlations
+
+    def test_fuzzy_factor_propagation(self):
+        """Test that fuzzy factor is properly set"""
+        corr = get_correlation('Gnielinski', fuzzy_factor=1.3)
+        assert corr.fuzzy_factor == 1.3
 
         h1 = corr1.compute(
             temperature=standard_water_conditions["temperature"],

@@ -5,6 +5,8 @@ from python_magnetcooling.friction import (
     FrictionModel,
     ConstantFriction,
     BlasiusFriction,
+    KarmanFriction,
+    get_friction_model,
 )
 
 
@@ -104,3 +106,78 @@ class TestFrictionModel:
         """Test setting custom roughness"""
         model = ConstantFriction(roughness=0.05e-3)
         assert model.roughness == 0.05e-3
+
+
+class TestKarmanFriction:
+    """Test Karman-Nikuradse friction correlation"""
+
+    def test_karman_friction_calculation(self):
+        """Test Karman correlation converges"""
+        model = KarmanFriction()
+        reynolds = 50000
+
+        f = model.compute(reynolds=reynolds, hydraulic_diameter=0.01)
+
+        # Should give reasonable turbulent friction factor
+        assert 0.01 < f < 0.05
+
+    def test_karman_decreases_with_reynolds(self):
+        """Test that Karman friction decreases with Reynolds number"""
+        model = KarmanFriction()
+
+        f_low = model.compute(reynolds=10000, hydraulic_diameter=0.01)
+        f_high = model.compute(reynolds=100000, hydraulic_diameter=0.01)
+
+        assert f_low > f_high
+
+    def test_karman_laminar_flow(self):
+        """Test Karman handles laminar flow correctly"""
+        model = KarmanFriction()
+
+        f = model.compute(reynolds=1500, hydraulic_diameter=0.01)
+
+        # Laminar: f = 64/Re
+        expected = 64.0 / 1500
+        assert abs(f - expected) < 1e-6
+
+    def test_karman_convergence(self):
+        """Test that Karman iteration converges"""
+        model = KarmanFriction()
+
+        # Should converge without raising exception
+        reynolds_values = [10000, 50000, 100000, 500000]
+        for re in reynolds_values:
+            f = model.compute(reynolds=re, hydraulic_diameter=0.01)
+            assert f > 0  # Valid result
+
+    def test_karman_similar_to_blasius(self):
+        """Test that Karman gives similar results to Blasius for smooth pipes"""
+        karman = KarmanFriction()
+        blasius = BlasiusFriction()
+
+        reynolds = 50000
+        f_karman = karman.compute(reynolds=reynolds, hydraulic_diameter=0.01)
+        f_blasius = blasius.compute(reynolds=reynolds, hydraulic_diameter=0.01)
+
+        # Should be within 10% for smooth pipes in turbulent range
+        relative_diff = abs(f_karman - f_blasius) / f_blasius
+        assert relative_diff < 0.1
+
+
+class TestFrictionModelRegistry:
+    """Test friction model registry and get_friction_model function"""
+
+    def test_get_karman_model(self):
+        """Test getting Karman model from registry"""
+        model = get_friction_model('Karman')
+        assert isinstance(model, KarmanFriction)
+
+    def test_all_models_available(self):
+        """Test that all models are in available models list"""
+        from python_magnetcooling.friction import available_friction_models
+
+        models = available_friction_models()
+        assert 'Karman' in models
+        assert 'Constant' in models
+        assert 'Blasius' in models
+        assert 'Rough' in models

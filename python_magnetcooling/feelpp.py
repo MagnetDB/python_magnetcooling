@@ -1,10 +1,11 @@
 """
-Adapter to connect thermal_hydraulics.py with FeelPP workflow
+Adapter to connect thermohydraulics.py with the FeelPP workflow.
 """
 
 from typing import Dict, Optional
 import pandas as pd
 
+from .channel import CoolingLevel
 from .thermohydraulics import (
     ThermalHydraulicCalculator,
     ThermalHydraulicInput,
@@ -17,7 +18,8 @@ from .thermohydraulics import (
 
 class FeelppThermalHydraulicAdapter:
     """
-    Adapter to use standalone ThermalHydraulicCalculator with FeelPP data structures
+    Adapter to use standalone ThermalHydraulicCalculator with FeelPP data
+    structures.
 
     Handles conversion between:
     - FeelPP parameter dictionaries → ThermalHydraulicInput
@@ -38,26 +40,21 @@ class FeelppThermalHydraulicAdapter:
         basedir: str,
     ) -> tuple:
         """
-        Compute thermal-hydraulics from FeelPP data structures
+        Compute thermal-hydraulics from FeelPP data structures.
 
         Returns:
             (ThermalHydraulicOutput, parameters_update, dict_df_update)
         """
-        # Extract flow parameters
         waterflow = targets[target]["waterflow"]
         objectif = abs(targets[target]["objectif"])
 
-        # Build input structure
         th_input = self._build_input_from_feelpp(
             target, dict_df, p_params, parameters, targets, args, basedir, objectif
         )
 
-        # Compute solution
         th_output = self.calculator.compute(th_input)
 
-        # Convert back to FeelPP structures
-        parameters_update = self._extract_parameter_updates(th_output, p_params, args, basedir)
-
+        parameters_update = self._extract_parameter_updates(th_output, p_params, args, parameters, basedir)
         dict_df_update = self._update_dict_df(dict_df, target, th_output, p_params)
 
         return th_output, parameters_update, dict_df_update
@@ -65,88 +62,123 @@ class FeelppThermalHydraulicAdapter:
     def _build_input_from_feelpp(
         self, target, dict_df, p_params, parameters, targets, args, basedir, objectif
     ) -> ThermalHydraulicInput:
-        """Build ThermalHydraulicInput from FeelPP data"""
+        """Build ThermalHydraulicInput from FeelPP data."""
+
+        # Parse cooling level from CLI argument (e.g. "gradHZ").
+        try:
+            cooling_level = CoolingLevel(args.cooling)
+        except ValueError:
+            raise ValueError(
+                f"Unknown cooling level '{args.cooling}'. "
+                f"Valid values: {[l.value for l in CoolingLevel]}"
+            )
 
         waterflow = targets[target]["waterflow"]
         pressure = waterflow.pressure(objectif)
-        dpressure = waterflow.dpressure(objectif)
+        dpressure = waterflow.pressure_drop(objectif)
 
-        # Extract geometry parameters
         Dh = [parameters[p] for p in p_params["Dh"]]
         Sh = [parameters[p] for p in p_params["Sh"]]
 
-        # Build channels
+        # Total flow rate is needed for mean / meanH (from pump curve).
+        total_flow_rate: Optional[float] = None
+        if cooling_level.is_mean:
+            total_flow_rate = waterflow.flow_rate(objectif)
+
         channels = []
 
-        if "H" in args.cooling:
-            # Channel-by-channel mode
+        if cooling_level.is_per_channel:
+            # ---- Per-channel mode (any H variant) --------------------------
             TwH = [parameters[p] for p in p_params["TwH"]]
             dTwH = [parameters[p] for p in p_params["dTwH"]]
+            if not dTwH:
+                dTwH = [0.0] * len(Dh)
             hwH = [parameters[p] for p in p_params["hwH"]]
             Lh = [
-                abs(parameters[p] - parameters[p.replace("max", "min")]) for p in p_params["ZmaxH"]
+                abs(parameters[p] - parameters[p.replace("max", "min")])
+                for p in p_params["ZmaxH"]
             ]
 
             for i, (d, s, L) in enumerate(zip(Dh, Sh, Lh)):
                 cname = p_params["Dh"][i].replace("Dh_", "")
                 power = dict_df[target]["Flux"][cname].iloc[-1]
 
-                # Handle axial discretization for gradHZ
                 axial_disc = None
-                if "Z" in args.cooling and isinstance(TwH[i], dict):
+                if cooling_level.is_axial and isinstance(TwH[i], dict):
                     axial_disc = self._extract_axial_discretization(
                         i, cname, TwH[i], dict_df[target].get("FluxZ"), basedir
                     )
 
-                Tw_inlet = TwH[i] if not isinstance(TwH[i], dict) else TwH[i]["value"]
-
-                channel = ChannelInput(
-                    geometry=ChannelGeometry(
-                        hydraulic_diameter=d, cross_section=s, length=L, name=cname
-                    ),
-                    power=power,
-                    temp_inlet=Tw_inlet,
-                    temp_outlet_guess=Tw_inlet + dTwH[i] if not isinstance(dTwH[i], dict) else None,
-                    heat_coeff_guess=hwH[i] if not isinstance(hwH[i], dict) else None,
-                    axial_discretization=axial_disc,
+                if isinstance(TwH[i], dict):
+                    _csvfile = TwH[i]["filename"].replace("$cfgdir", basedir)
+                    _tw_data = pd.read_csv(_csvfile, sep=",")
+                    Tw_inlet = float(_tw_data["Tw"].iloc[0])
+                else:
+                    Tw_inlet = TwH[i]
+                T_out_guess = (
+                    Tw_inlet + dTwH[i] if not isinstance(dTwH[i], dict) else None
                 )
-                channels.append(channel)
+                h_guess = hwH[i] if not isinstance(hwH[i], dict) else None
+
+                channels.append(
+                    ChannelInput(
+                        geometry=ChannelGeometry(
+                            hydraulic_diameter=d,
+                            cross_section=s,
+                            length=L,
+                            name=cname,
+                        ),
+                        power=power,
+                        temp_inlet=Tw_inlet,
+                        temp_outlet_guess=T_out_guess,
+                        heat_coeff_guess=h_guess,
+                        axial_discretization=axial_disc,
+                    )
+                )
+
         else:
-            # Global mode
+            # ---- Global (single-magnet) mode --------------------------------
             Tw = [parameters[p] for p in p_params["Tw"]]
             dTw = [parameters[p] for p in p_params["dTw"]]
             hw = [parameters[p] for p in p_params["hw"]]
-            L = [abs(parameters[p] - parameters[p.replace("max", "min")]) for p in p_params["Zmax"]]
-
-            # Single "channel" representing the whole magnet
+            L = [
+                abs(parameters[p] - parameters[p.replace("max", "min")])
+                for p in p_params["Zmax"]
+            ]
             total_power = dict_df[target]["PowerM"].iloc[-1, 0]
 
-            channel = ChannelInput(
-                geometry=ChannelGeometry(
-                    hydraulic_diameter=Dh[0], cross_section=sum(Sh), length=L[0], name="global"
-                ),
-                power=total_power,
-                temp_inlet=Tw[0],
-                temp_outlet_guess=Tw[0] + dTw[0],
-                heat_coeff_guess=hw[0],
+            channels.append(
+                ChannelInput(
+                    geometry=ChannelGeometry(
+                        hydraulic_diameter=Dh[0],
+                        cross_section=sum(Sh),
+                        length=L[0],
+                        name="global",
+                    ),
+                    power=total_power,
+                    temp_inlet=Tw[0],
+                    temp_outlet_guess=Tw[0] + dTw[0],
+                    heat_coeff_guess=hw[0],
+                )
             )
-            channels.append(channel)
 
         return ThermalHydraulicInput(
             channels=channels,
             pressure_inlet=pressure,
             pressure_drop=dpressure,
+            cooling_level=cooling_level,
+            total_flow_rate=total_flow_rate,
             heat_correlation=args.heatcorrelation,
             friction_model=args.friction,
             fuzzy_factor=targets[target]["fuzzy"],
-            extra_pressure_loss=args.pextra,
+            extra_pressure_loss=targets[target].get("pextra", 1),
             relaxation_factor=targets[target]["relax"],
         )
 
     def _extract_axial_discretization(
         self, channel_idx, channel_name, Tw_dict, FluxZ_df, basedir
     ) -> Optional[AxialDiscretization]:
-        """Extract axial discretization from FeelPP data"""
+        """Extract axial discretization from FeelPP data."""
 
         if FluxZ_df is None:
             return None
@@ -155,63 +187,140 @@ class FeelppThermalHydraulicAdapter:
         Tw_data = pd.read_csv(csvfile, sep=",")
         z_positions = Tw_data["Z"].to_list()
 
-        # Get flux distribution
         key_dz = [fkey for fkey in FluxZ_df.columns if fkey.endswith(channel_name)]
         power_distribution = [
-            FluxZ_df.at[FluxZ_df.index[-1], f"FluxZ{i}_{channel_name}"] for i in range(len(key_dz))
+            FluxZ_df.at[FluxZ_df.index[-1], f"FluxZ{i}_{channel_name}"]
+            for i in range(len(key_dz))
         ]
 
-        return AxialDiscretization(z_positions=z_positions, power_distribution=power_distribution)
+        return AxialDiscretization(
+            z_positions=z_positions, power_distribution=power_distribution
+        )
 
     def _extract_parameter_updates(
-        self, th_output: ThermalHydraulicOutput, p_params: dict, args, basedir
+        self,
+        th_output: ThermalHydraulicOutput,
+        p_params: dict,
+        args,
+        parameters: dict = None,
+        basedir: str = "",
     ) -> Dict[str, float]:
-        """Extract parameter updates for FeelPP"""
+        """Extract parameter updates for FeelPP from solver output."""
 
         updates = {}
+        cooling_level = CoolingLevel(args.cooling)
 
-        if "H" in args.cooling:
-            for i, (channel_out, param_name_dT, param_name_h) in enumerate(
-                zip(th_output.channels, p_params.get("dTwH", []), p_params.get("hwH", []))
+        if cooling_level.is_per_channel:
+            for channel_out, param_dT, param_h in zip(
+                th_output.channels,
+                p_params.get("dTwH", []),
+                p_params.get("hwH", []),
             ):
-                # Update temperature rise
-                if param_name_dT:
-                    updates[param_name_dT] = channel_out.temp_rise
+                # Mean heat coefficient (all per-channel levels).
+                if param_h:
+                    updates[param_h] = channel_out.heat_coeff
 
-                # Update heat coefficient (if not axial distribution)
-                if param_name_h and not channel_out.heat_coeff_distribution:
-                    updates[param_name_h] = channel_out.heat_coeff
+                if cooling_level.is_axial:
+                    # gradHZ / gradHZH: per-section temperature rises.
+                    # p_params["dTwHZ"] is expected to be a list of lists:
+                    # p_params["dTwHZ"][channel_idx] = [param_name_k0, param_name_k1, ...]
+                    # If not provided, fall back to total rise only.
+                    dTwHZ_params = p_params.get("dTwHZ", [])
+                    if dTwHZ_params and channel_out.temp_rise_distribution is not None:
+                        ch_idx = list(th_output.channels).index(channel_out)
+                        if ch_idx < len(dTwHZ_params):
+                            for param_name, dTw_k in zip(
+                                dTwHZ_params[ch_idx],
+                                channel_out.temp_rise_distribution,
+                            ):
+                                updates[param_name] = dTw_k
+                    elif param_dT:
+                        updates[param_dT] = channel_out.temp_rise
 
-                # Save axial distribution if present
-                if channel_out.temp_distribution:
-                    # This needs the Tw_dict info to save properly
-                    # Implementation depends on how you want to handle this
-                    pass
+                    # gradHZH: per-section h coefficients.
+                    hwHZ_params = p_params.get("hwHZ", [])
+                    if hwHZ_params and channel_out.heat_coeff_distribution is not None:
+                        ch_idx = list(th_output.channels).index(channel_out)
+                        if ch_idx < len(hwHZ_params):
+                            for param_name, h_k in zip(
+                                hwHZ_params[ch_idx],
+                                channel_out.heat_coeff_distribution,
+                            ):
+                                updates[param_name] = h_k
+                                
+                    # Write per-section Tw (and hw for gradHZH) back to the CSV
+                    # that feelpp uses as a boundary-condition table.  Without
+                    # this, the axial temperature profile is stale on the next
+                    # outer iteration.
+                    if parameters is not None and channel_out.temp_rise_distribution is not None:
+                        _TwH_params = p_params.get("TwH", [])
+                        _ch_idx = list(th_output.channels).index(channel_out)
+                        if _ch_idx < len(_TwH_params):
+                            _twh_val = parameters.get(_TwH_params[_ch_idx])
+                            if isinstance(_twh_val, dict):
+                                _csvfile = _twh_val["filename"].replace("$cfgdir", basedir)
+                                _tw_data = pd.read_csv(_csvfile, sep=",")
+                                # Reconstruct absolute Tw from inlet + cumulative rises
+                                _tw_inlet = float(_tw_data["Tw"].iloc[0])
+                                _tw_z = [_tw_inlet]
+                                for _dTw_k in channel_out.temp_rise_distribution:
+                                    _tw_z.append(_tw_z[-1] + _dTw_k)
+                                _tw_data["Tw"] = _tw_z
+                                if (
+                                    cooling_level.has_per_section_h
+                                    and channel_out.heat_coeff_distribution is not None
+                                ):
+                                    _tw_data["hw"] = channel_out.heat_coeff_distribution
+                                elif "hw" in _tw_data.columns:
+                                    _tw_data = _tw_data.drop(columns=["hw"])
+                                _tw_data.to_csv(_csvfile, index=False)
+
+                else:
+                    # mean / meanH / gradH: single dTw per channel.
+                    if param_dT:
+                        updates[param_dT] = channel_out.temp_rise
         else:
-            # Global mode
             if th_output.channels:
-                channel = th_output.channels[0]
+                ch = th_output.channels[0]
                 if p_params.get("dTw"):
-                    updates[p_params["dTw"][0]] = channel.temp_rise
+                    updates[p_params["dTw"][0]] = ch.temp_rise
                 if p_params.get("hw"):
-                    updates[p_params["hw"][0]] = channel.heat_coeff
+                    updates[p_params["hw"][0]] = ch.heat_coeff
 
         return updates
 
     def _update_dict_df(
-        self, dict_df: dict, target: str, th_output: ThermalHydraulicOutput, p_params: dict
+        self,
+        dict_df: dict,
+        target: str,
+        th_output: ThermalHydraulicOutput,
+        p_params: dict,
     ) -> dict:
-        """Update dict_df with results"""
+        """Update dict_df with results."""
 
         for i, channel_out in enumerate(th_output.channels):
-            cname = channel_out.geometry.name if hasattr(channel_out, "geometry") else f"ch_{i}"
+            dh_params = p_params.get("Dh", [])
+            cname = dh_params[i].replace("Dh_", "") if i < len(dh_params) else f"ch_{i}"
 
             dict_df[target]["HeatCoeff"][f"hw_{cname}"] = [round(channel_out.heat_coeff, 3)]
             dict_df[target]["DT"][f"dTw_{cname}"] = [round(channel_out.temp_rise, 3)]
             dict_df[target]["Uw"][f"Uw_{cname}"] = [round(channel_out.velocity, 3)]
 
-            if "H" in dict_df[target] and hasattr(channel_out, "friction_factor"):
+            if "cf" in dict_df[target]:
                 dict_df[target]["cf"][f"cf_{cname}"] = [channel_out.friction_factor]
+
+            # gradHZ / gradHZH: store per-section Tw data for feelpp BCs.
+            # T_in is already in the parameters; dTw per section is new.
+            if channel_out.temp_rise_distribution is not None:
+                dict_df[target].setdefault("DTZ", {})[f"dTwZ_{cname}"] = (
+                    channel_out.temp_rise_distribution
+                )
+
+            # gradHZH: store per-section h distribution for feelpp BCs.
+            if channel_out.heat_coeff_distribution is not None:
+                dict_df[target].setdefault("HeatCoeffZ", {})[f"hwZ_{cname}"] = (
+                    channel_out.heat_coeff_distribution
+                )
 
         dict_df[target]["Tout"] = th_output.outlet_temp_mixed
         dict_df[target]["flow"] = th_output.total_flow_rate
