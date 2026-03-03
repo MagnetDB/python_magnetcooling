@@ -22,31 +22,13 @@
 | `uguess=0` default in `Uw()` (`cooling.py`) | Changed to `uguess: float = 1.0`; prevents `Re=0 → log(0)` domain error on first iteration |
 | Dead bare-string block in `cooling.py` | Removed unimplemented friction variant stubs (karman, rough, gnielinski) |
 | Unreachable `importlib_metadata` fallback in `__init__.py` | Removed; package requires Python 3.11+ which ships `importlib.metadata` |
+| `fuzzy` not applied in `Dittus`/`Colburn`/`Silverberg` (`cooling.py`) | **Closed by design** — fuzzy is intentionally applied only in `Montgomery` in the legacy interface; `DittusBoelterCorrelation`, `ColburnCorrelation`, `SilverbergCorrelation` in `correlations.py` are the authoritative implementations |
 
 ---
 
 ## Remaining Bugs
 
-### 1. `fuzzy` factor silently ignored for Dittus/Colburn/Silverberg (`cooling.py`)
-
-`Dittus`, `Colburn`, and `Silverberg` accept a `fuzzy` parameter but never apply it.
-Only `Montgomery` applies fuzzy. The `fuzzy_factor` field on `ThermalHydraulicInput`
-therefore has no effect when those three correlations are selected via the legacy
-interface.
-
-Note: this is intentional for now — the fuzzy factor is applied only in
-`Montgomery` in `cooling.py`. The OOP equivalents in `correlations.py`
-(`DittusBoelterCorrelation`, `ColburnCorrelation`, `SilverbergCorrelation`) each
-apply `self.fuzzy_factor`, which is the authoritative implementation.
-
-```python
-def Dittus(..., fuzzy: float = 1.0, ...) -> float:
-    params = (0.023, 0.8, 0.4)
-    h = hcorrelation(params, ...)  # fuzzy accepted but not applied
-    return h
-```
-
-### 2. `ThermalHydraulicCalculator` has no direct unit tests
+### 1. `ThermalHydraulicCalculator` has no direct unit tests
 
 `test_correlations.py` and `test_friction.py` only cover `MontgomeryCorrelation`,
 `ConstantFriction`, and `BlasiusFriction`. The following have no test coverage:
@@ -76,7 +58,6 @@ Scattered debug prints that were commented out but never cleaned up. Remove them
 
 | # | File | Fix |
 |---|------|-----|
-| 1 | `cooling.py` | Apply `fuzzy` in `Dittus`, `Colburn`, `Silverberg`: `return fuzzy * hcorrelation(...)` |
-| 2 | `tests/` | Add tests for `DittusBoelterCorrelation`, `ColburnCorrelation`, `SilverbergCorrelation`, `FilonenkoFriction`, `ColebrookFriction`, `SwameeFriction`, and `ThermalHydraulicCalculator` |
-| 3 | `heatexchanger_primary.py` | Remove or restore `heatBalance` dead code |
-| 4 | `cooling.py` | Remove ~15 commented-out `print` statements |
+| 1 | `tests/` | Add tests for `DittusBoelterCorrelation`, `ColburnCorrelation`, `SilverbergCorrelation`, `FilonenkoFriction`, `ColebrookFriction`, `SwameeFriction`, and `ThermalHydraulicCalculator` |
+| 2 | `heatexchanger_primary.py` | Remove or restore `heatBalance` dead code |
+| 3 | `cooling.py` | Remove ~15 commented-out `print` statements |
