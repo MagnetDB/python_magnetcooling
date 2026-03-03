@@ -14,6 +14,7 @@ Six cooling levels are supported (see :class:`CoolingLevel`):
 * ``gradHZH`` – same, one h per axial section.
 """
 
+import dataclasses
 from dataclasses import dataclass
 from math import sqrt
 from typing import List, Optional, Tuple
@@ -245,13 +246,17 @@ class ThermalHydraulicCalculator:
         Returns:
             Complete thermal-hydraulic solution.
         """
-        inputs.pressure_inlet = waterflow_params.pressure(current)
-        inputs.pressure_drop = waterflow_params.pressure_drop(current)
-
+        updates = {
+            "pressure_inlet": waterflow_params.pressure(current),
+            "pressure_drop": waterflow_params.pressure_drop(current),
+        }
         if inputs.cooling_level.is_mean:
             # Total volumetric flow rate directly from pump curve [m³/s].
-            inputs.total_flow_rate = waterflow_params.flow_rate(current)
-        else:
+            updates["total_flow_rate"] = waterflow_params.flow_rate(current)
+
+        inputs = dataclasses.replace(inputs, **updates)
+
+        if not inputs.cooling_level.is_mean:
             # Provide a velocity hint for faster convergence of the grad solver.
             total_Sh = sum(ch.geometry.cross_section for ch in inputs.channels)
             Q_total = waterflow_params.flow_rate(current)

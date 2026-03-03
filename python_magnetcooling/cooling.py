@@ -205,7 +205,7 @@ def Uw(
     friction: str = "Colebrook",
     Pextra: float = 1.0,
     fguess: float = 0.055,
-    uguess: float = 0,
+    uguess: float = 1.0,
     rugosity: float = 0.012e-3,
 ) -> tuple:
     """
@@ -233,7 +233,7 @@ def Uw(
         "Swamee": Swamee,
     }
 
-    U = uguess
+    U = max(uguess, 1e-3)
     f = fguess
 
     isOk = False

@@ -612,21 +612,6 @@ def estimate_temperature_elevation(
     return outlet_temp
 
 
-# def heatBalance(Tin, Pin, Debit, Power, debug=False):
-#    """
-#    Computes Tout from heatBalance
-#
-#    inputs:
-#    Tin: input Temp in K
-#    Pin: input Pressure (Bar)
-#    Debit: Flow rate in kg/s
-#    """
-#
-#    dT = Power / (w.getRho(Tin, Pin) * Debit * w.getCp(Tin, Pin))
-#    Tout = Tin + dT
-#    return Tout
-
-
 def calculate_heat_capacity_and_density(
     Pci: float, Tci: float, Phi: float, Thi: float
 ) -> Tuple[float, float, float, float]:
