@@ -48,6 +48,10 @@ viz = [
     "matplotlib>=3.8.0",
     "seaborn>=0.13.0",
 ]
+fitting = [
+    "pwlf>=2.4.0",
+    "sympy>=1.11.1",
+]
 clawpack = [
     "clawpack>=5.0.0",
 ]
