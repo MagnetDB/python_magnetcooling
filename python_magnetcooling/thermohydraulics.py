@@ -14,6 +14,7 @@ Six cooling levels are supported (see :class:`CoolingLevel`):
 * ``gradHZH`` – same, one h per axial section.
 """
 
+import dataclasses
 from dataclasses import dataclass
 from math import sqrt
 from typing import List, Optional, Tuple
@@ -32,9 +33,6 @@ from .correlations import HeatCorrelation, get_correlation
 from .friction import FrictionModel, get_friction_model
 from .water_properties import WaterProperties, WaterState
 from .waterflow import WaterFlow
-
-# getDT is a thin calorimetric helper; keep the import rather than inlining.
-from .cooling import getDT
 
 
 # ---------------------------------------------------------------------------
@@ -245,22 +243,32 @@ class ThermalHydraulicCalculator:
         Returns:
             Complete thermal-hydraulic solution.
         """
-        inputs.pressure_inlet = waterflow_params.pressure(current)
-        inputs.pressure_drop = waterflow_params.pressure_drop(current)
+        # Work on a local copy — do not mutate the caller's object.
+        local_inputs = dataclasses.replace(
+            inputs,
+            pressure_inlet=waterflow_params.pressure(current),
+            pressure_drop=waterflow_params.pressure_drop(current),
+        )
 
-        if inputs.cooling_level.is_mean:
+        if local_inputs.cooling_level.is_mean:
             # Total volumetric flow rate directly from pump curve [m³/s].
-            inputs.total_flow_rate = waterflow_params.flow_rate(current)
+            local_inputs = dataclasses.replace(
+                local_inputs,
+                total_flow_rate=waterflow_params.flow_rate(current),
+            )
         else:
             # Provide a velocity hint for faster convergence of the grad solver.
-            total_Sh = sum(ch.geometry.cross_section for ch in inputs.channels)
+            total_Sh = sum(ch.geometry.cross_section for ch in local_inputs.channels)
             Q_total = waterflow_params.flow_rate(current)
             U_hint = Q_total / total_Sh
-            for channel in inputs.channels:
-                if channel.velocity_guess is None:
-                    channel.velocity_guess = U_hint
+            updated_channels = [
+                dataclasses.replace(ch, velocity_guess=U_hint)
+                if ch.velocity_guess is None else ch
+                for ch in local_inputs.channels
+            ]
+            local_inputs = dataclasses.replace(local_inputs, channels=updated_channels)
 
-        return self.compute(inputs)
+        return self.compute(local_inputs)
 
     # ------------------------------------------------------------------
     # Flow distribution
@@ -352,9 +360,9 @@ class ThermalHydraulicCalculator:
         P = inputs.pressure_inlet
 
         # Calorimetric ΔT: one correction step (compute at T_in, refine at T_mean).
-        dT = getDT(Q_i, channel.power, T_in, P)
+        dT = WaterProperties.compute_temperature_rise(Q_i, channel.power, T_in, P)
         T_mean = T_in + dT / 2.0
-        dT = getDT(Q_i, channel.power, T_mean, P)  # refine with better T_mean
+        dT = WaterProperties.compute_temperature_rise(Q_i, channel.power, T_mean, P)  # refine with better T_mean
         T_out = T_in + dT
         T_mean = T_in + dT / 2.0
 
@@ -416,7 +424,7 @@ class ThermalHydraulicCalculator:
             T_mean = channel.temp_inlet + dT / 2.0
             Q = U * geom.cross_section
 
-            dT_new = getDT(Q, channel.power, T_mean, inputs.pressure_inlet)
+            dT_new = WaterProperties.compute_temperature_rise(Q, channel.power, T_mean, inputs.pressure_inlet)
 
             h_new = self._correlation.compute(
                 T_mean,
@@ -517,7 +525,7 @@ class ThermalHydraulicCalculator:
 
                 # Use current T_z[k+1] as a mean-temperature guess.
                 T_mean_k = (T_z[k] + T_z[k + 1]) / 2.0
-                dT_k = getDT(Q, axial.power_distribution[k], T_mean_k, P_local)
+                dT_k = WaterProperties.compute_temperature_rise(Q, axial.power_distribution[k], T_mean_k, P_local)
                 T_z[k + 1] = T_z[k] + dT_k
 
             # --- Heat coefficient per section --------------------------------

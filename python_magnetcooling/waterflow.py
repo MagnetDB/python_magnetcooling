@@ -8,14 +8,14 @@ This module handles:
 - Velocity calculations based on operating conditions
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import Optional
 import json
-from warnings import simplefilter
 from pint import UnitRegistry, Quantity
 
-# Ignore pint warnings
-simplefilter("ignore")
+# Suppress pint deprecation warnings without affecting other libraries.
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pint")
 Quantity([])
 
 # Pint configuration

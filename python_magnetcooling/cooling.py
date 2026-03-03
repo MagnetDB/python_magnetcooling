@@ -82,8 +82,7 @@ def Dittus(
 ) -> float:
     """Dittus-Boelter correlation: Nu = 0.023·Re^0.8·Pr^0.4 [W/m²/K]"""
     params = (0.023, 0.8, 0.4)
-    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Dittus")
-    return h
+    return fuzzy * hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Dittus")
 
 
 def Colburn(
@@ -99,8 +98,7 @@ def Colburn(
 ) -> float:
     """Colburn correlation: Nu = 0.023·Re^0.8·Pr^0.3 [W/m²/K]"""
     params = (0.023, 0.8, 0.3)
-    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Colburn")
-    return h
+    return fuzzy * hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Colburn")
 
 
 def Silverberg(
@@ -116,39 +114,13 @@ def Silverberg(
 ) -> float:
     """Silverberg correlation: Nu = 0.015·Re^0.85·Pr^0.3 [W/m²/K]"""
     params = (0.015, 0.85, 0.3)
-    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Silverberg")
-    return h
+    return fuzzy * hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Silverberg")
 
 
 def Constant(Re: float, Dh: float, f: float, rugosity: float) -> float:
     """Return constant friction factor (0.055)."""
     cf = 0.055
     return cf
-
-
-"""
-To be implemented
-
-friction == "karman":
-            iterate = True
-            Cf  = math.pow(1.93*math.log10(Reynolds*math.sqrt(f))-0.537,-2)
-        elif friction == "rough":
-            iterate = True
-            eps = 2.5e-2 # mm
-            rstar = 1/math.sqrt(8.) * (Reynolds*math.sqrt(f))*eps/dh
-            brstar = 1/(1.930*math.sqrt(f)) + math.log10(1.9/math.sqrt(8.) * eps/dh)
-            ###print "brstar=%g" % brstar
-
-            # Cf = math.pow(-1.930*math.log(1.90/(Reynolds*math.sqrt(f))*(1+0.34*rstar*math.exp(-11./rstar))),-2.)
-            Cf = math.pow(-2.00*math.log10(2.51/(Reynolds*math.sqrt(f))*(1+rstar/3.3)),-2.)
-
-        # Gnielinski breaks when a tends to 1
-        # elif friction == "gnielinski":
-        #     a = diameter_ratio
-        #     Re = Reynolds * ( (1.+a**2) * math.log(a)+(1-a**2) / ( (1.-a)**2 * math.log(a) ))
-        #     Cf = math.pow(1.8*math.log10(Re)-1.5,-2)
-        # # print ("%s Cf=%g" % (friction,Cf) )
-"""
 
 
 def Blasius(Re: float, Dh: float, f: float, rugosity: float) -> float:
@@ -230,7 +202,7 @@ def Uw(
     friction: str = "Colebrook",
     Pextra: float = 1.0,
     fguess: float = 0.055,
-    uguess: float = 0,
+    uguess: float = 1.0,
     rugosity: float = 0.012e-3,
 ) -> tuple:
     """
