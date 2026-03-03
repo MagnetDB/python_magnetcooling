@@ -66,7 +66,7 @@ from .waterflow_factory import (
 )
 from .correlations import HeatCorrelation, available_correlations
 from .friction import FrictionModel, available_friction_models
-from .water_properties import WaterProperties
+from .water_properties import WaterProperties, get_rho, get_cp
 
 __all__ = [
     "__version__",
@@ -94,3 +94,4 @@ __all__ = [
     "available_correlations",
     "available_friction_models",
 ]
+

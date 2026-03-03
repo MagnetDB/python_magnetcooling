@@ -116,3 +116,13 @@ class WaterProperties:
         """
         state = WaterProperties.get_state(temperature, pressure)
         return state.density * velocity * hydraulic_diameter / state.dynamic_viscosity
+
+# add helpers
+def get_rho(pbar: float, celsius: float) -> float:
+    """Water density [kg/m³]. Args: pressure (bar), temperature (°C)."""
+    return WaterProperties.get_state(temperature=celsius + 273.15, pressure=pbar).density
+
+
+def get_cp(pbar: float, celsius: float) -> float:
+    """Water specific heat [J/kg/K]. Args: pressure (bar), temperature (°C)."""
+    return WaterProperties.get_state(temperature=celsius + 273.15, pressure=pbar).specific_heat
