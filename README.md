@@ -219,7 +219,7 @@ Pump characteristics and flow rate calculations for cooling loops.
 
 **Key Features:**
 - Pump speed, flow rate, and pressure calculations as functions of current
-- Support for hysteresis models (debitbrut method)
+- Support for hysteresis models for secondary cooling loop flow (`debitbrut()` method)
 - JSON serialization for configuration management
 
 ### `heatexchanger_primary`
@@ -238,7 +238,7 @@ The `examples/` directory contains practical applications:
 - **`feelpp.py`**: Integration with Feel++ finite element simulations
 - **`plotting_example.py`**: Demonstrates plotting utilities for hydraulic fits and hysteresis models
 - **`fit_metrics_example.py`**: Shows how to evaluate fit quality and decide when to refit models
-- **`waterflow_debitbrut_example.py`**: Usage examples for flow rate calculation with hysteresis
+- **`waterflow_debitbrut_example.py`**: Usage examples for secondary cooling loop flow rate calculation with hysteresis
 - **`hysteresis_demo.py`**: Comprehensive hysteresis model demonstrations and parameter estimation
 
 To run an example:

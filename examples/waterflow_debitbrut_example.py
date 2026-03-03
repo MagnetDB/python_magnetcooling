@@ -1,10 +1,13 @@
 """
-Example demonstrating the debitbrut method with hysteresis model.
+Example demonstrating the debitbrut() method with hysteresis model for secondary cooling loop.
 
 This example shows how to:
 1. Configure hysteresis parameters in WaterFlow
-2. Use the debitbrut method to compute flow rates from power
+2. Use the debitbrut() method to compute secondary flow rates from power
 3. Visualize the hysteresis behavior
+
+Note: 'debitbrut' refers to the secondary cooling loop flow rate (French term maintained
+for compatibility). In CSV files, use the column name 'flow_secondary' for clarity.
 """
 
 import numpy as np
@@ -13,9 +16,9 @@ from python_magnetcooling.waterflow import WaterFlow
 
 
 def example_basic():
-    """Basic example of debitbrut with hysteresis"""
+    """Basic example of debitbrut() method for secondary flow with hysteresis"""
     print("=" * 60)
-    print("Basic debitbrut example")
+    print("Basic secondary flow (debitbrut) example")
     print("=" * 60)
     
     # Create WaterFlow instance with hysteresis parameters
@@ -38,10 +41,10 @@ def example_basic():
     # Simulate power cycle: increase then decrease
     power_sequence = [0, 2, 5, 8, 10, 12, 15, 18, 15, 12, 10, 8, 5, 2, 0]
     
-    print("\nPower [MW] -> Flow [m³/h]")
+    print("\nPower [MW] -> Secondary Flow [m³/h]")
     print("-" * 40)
     
-    # Use the debitbrut method which properly handles arrays
+    # Use the debitbrut() method which properly handles arrays
     power_array = np.array(power_sequence)
     flow_rates = flow.debitbrut(power_array)
     
@@ -115,9 +118,9 @@ def example_from_json():
 
 
 def example_with_array():
-    """Example using array of power values"""
+    """Example using array of power values for secondary flow"""
     print("\n" + "=" * 60)
-    print("Using debitbrut with power array")
+    print("Using debitbrut() with power array for secondary flow")
     print("=" * 60)
     
     flow = WaterFlow(
@@ -147,8 +150,8 @@ def example_with_array():
     plt.subplot(1, 2, 2)
     plt.plot(power, flow_rates, 'r.-', alpha=0.5, markersize=2)
     plt.xlabel('Power [MW]')
-    plt.ylabel('Flow Rate [m³/h]')
-    plt.title('Hysteresis: Flow Rate vs Power')
+    plt.ylabel('Secondary Flow Rate [m³/h]')
+    plt.title('Hysteresis: Secondary Flow Rate vs Power')
     plt.grid(True)
     
     # Add threshold lines

@@ -1,8 +1,10 @@
-# Hysteresis Model for Water Flow Control (debitbrut)
+# Hysteresis Model for Water Flow Control (Secondary Flow)
 
 ## Overview
 
-The `debitbrut` method implements a multi-level hysteresis model for computing gross water flow rate as a function of magnet power. This model accounts for the operational reality that flow rates are adjusted based on both current power level AND the direction of power change.
+The `debitbrut()` method implements a multi-level hysteresis model for computing secondary cooling loop flow rate as a function of magnet power. This model accounts for the operational reality that flow rates are adjusted based on both current power level AND the direction of power change.
+
+**Note on terminology**: The method name `debitbrut()` is maintained for backward compatibility. In CSV data files, use the column name `flow_secondary` for clarity.
 
 ## Hysteresis Behavior
 
@@ -110,13 +112,13 @@ sys.path.insert(0, 'examples')  # Add examples to path
 from hysteresis import estimate_hysteresis_parameters, remove_low_x_outliers
 
 # Load your data with columns for power and flow rate
-df = pd.read_csv("your_data.csv")  # Must have Pmagnet, debitbrut columns
+df = pd.read_csv("your_data.csv")  # Must have Pmagnet, flow_secondary columns
 
 # Clean outliers from low power region (optional but recommended)
 df_clean = remove_low_x_outliers(
     df,
     x_col="Pmagnet",
-    y_col="debitbrut",
+    y_col="flow_secondary",
     x_percentile=25,
     verbose=True
 )
@@ -125,7 +127,7 @@ df_clean = remove_low_x_outliers(
 result = estimate_hysteresis_parameters(
     df_clean,
     x_col="Pmagnet",
-    y_col="debitbrut",
+    y_col="flow_secondary",
     n_levels=3,  # Number of threshold levels
     verbose=True
 )

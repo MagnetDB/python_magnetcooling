@@ -1463,7 +1463,8 @@ def fit_hysteresis_parameters(
     power : np.ndarray
         Magnet power values [MW], sequential time-series data.
     flow_rate : np.ndarray
-        Gross flow rate ("debitbrut") values [m³/h], same length as power.
+        Secondary cooling loop flow rate values [m³/h], same length as power.
+        (Formerly "debitbrut" - use "flow_secondary" in new CSV files)
     n_levels : int, optional
         Number of discrete levels to cluster flow rates into.
         If None, auto-detects distinct levels from data.
@@ -1503,7 +1504,7 @@ def fit_hysteresis_parameters(
     >>> # Load magnet run data
     >>> df = pd.read_csv("magnet_data.csv")
     >>> power = df["Pmagnet"].values  # MW
-    >>> flow = df["debitbrut"].values  # m³/h
+    >>> flow = df["flow_secondary"].values  # m³/h (secondary cooling loop)
     >>> 
     >>> # Fit hysteresis model with 3 levels
     >>> hyst_fit = fit_hysteresis_parameters(
@@ -1564,7 +1565,7 @@ def fit_hysteresis_parameters(
 
     # Create DataFrame for processing
     import pandas as pd
-    df = pd.DataFrame({"Pmagnet": power, "debitbrut": flow_rate})
+    df = pd.DataFrame({"Pmagnet": power, "flow_secondary": flow_rate})
 
     # Clean outliers if requested
     if clean_outliers:
@@ -1578,7 +1579,7 @@ def fit_hysteresis_parameters(
         df_clean = remove_low_x_outliers(
             df,
             x_col="Pmagnet",
-            y_col="debitbrut",
+            y_col="flow_secondary",
             x_percentile=outlier_percentile,
             method=outlier_method,
             threshold=outlier_threshold,
@@ -1594,7 +1595,7 @@ def fit_hysteresis_parameters(
     from .hysteresis import estimate_hysteresis_parameters
 
     result = estimate_hysteresis_parameters(
-        df_clean, x_col="Pmagnet", y_col="debitbrut", n_levels=n_levels, verbose=verbose
+        df_clean, x_col="Pmagnet", y_col="flow_secondary", n_levels=n_levels, verbose=verbose
     )
 
     # Extract results
@@ -1721,7 +1722,7 @@ def build_waterflow_with_hysteresis(
 
     This function combines standard hydraulic parameters with hysteresis model
     parameters to create a WaterFlow object that supports both standard flow
-    calculations and power-dependent flow with hysteresis (debitbrut method).
+    calculations and power-dependent flow with hysteresis for secondary cooling loop flow.
 
     Parameters
     ----------
@@ -1765,7 +1766,7 @@ def build_waterflow_with_hysteresis(
     >>> flow_at_20kA = waterflow.flow_rate(20000)
     >>> 
     >>> # Use hysteresis method
-    >>> flow_at_10MW = waterflow.debitbrut(10.0)  # MW
+    >>> flow_at_10MW = waterflow.debitbrut(10.0)  # MW -> returns secondary flow in m³/h
 
     See Also
     --------

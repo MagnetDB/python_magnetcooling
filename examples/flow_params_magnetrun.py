@@ -287,9 +287,14 @@ def compute(
 
 
 def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
+    """Estimate hysteresis parameters for secondary cooling loop flow.
+    
+    Note: This function uses 'debitbrut' for compatibility with magnetrun data.
+    In new CSV files, prefer the column name 'flow_secondary' for clarity.
+    """
     print(f"debitbrut: ofile={ofile}, nlevels={nlevels}")
 
-    # DebitBrut
+    # Secondary Flow (debitbrut) analysis
     qt0 = df.index.values[0]
 
     qsymbol = "Q"
@@ -312,14 +317,14 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     # Pmagnet > MW: 3
     # sinon 1
     x = df["t"].to_numpy()
-    y = df["debitbrut"].to_numpy()
-    df.plot(x="Pmagnet", y="debitbrut")
-    plt.title(f"{ofile}: Debitbrut(Pmagnet)")
+    y = df["flow_secondary"].to_numpy()  # Secondary flow rate
+    df.plot(x="Pmagnet", y="flow_secondary")
+    plt.title(f"{ofile}: Secondary Flow(Pmagnet)")
     plt.grid()
     plt.show()
     plt.close()
 
-    # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "debitbrut", args.window, threshold_dict["debitbrut"], overview_dict[ofile]["sources"]["pupitre"], show=True)
+    # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "flow_secondary", args.window, threshold_dict["flow_secondary"], overview_dict[ofile]["sources"]["pupitre"], show=True)
 
     from .processing.hysteresis import (
         multi_level_hysteresis,
@@ -331,18 +336,18 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     df_clean = remove_low_x_outliers(
         df,
         x_col="Pmagnet",
-        y_col="debitbrut",
+        y_col="flow_secondary",
         x_percentile=25,
         verbose=True,
     )
 
     # Calculate differences between consecutive values
-    xdf = df_clean[["t", "debitbrut", "Pmagnet"]].copy()
+    xdf = df_clean[["t", "flow_secondary", "Pmagnet"]].copy()
 
-    # how to estimate levels ? from max pmagnet? from debitbrut?
+    # how to estimate levels ? from max pmagnet? from flow_secondary?
     print("estimate_hysteresis_parameters:")
     result = estimate_hysteresis_parameters(
-        xdf, x_col="Pmagnet", y_col="debitbrut", n_levels=nlevels, verbose=True
+        xdf, x_col="Pmagnet", y_col="flow_secondary", n_levels=nlevels, verbose=True
     )
 
     # Extract the parameters for multi_level_hysteresis()
@@ -354,7 +359,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     print(f"Estimated high values: {high_values}", flush=True)
 
     x = xdf["Pmagnet"].to_numpy()
-    y = xdf["debitbrut"].to_numpy()
+    y = xdf["flow_secondary"].to_numpy()
     y_model = multi_level_hysteresis(x, thresholds, low_values, high_values)
 
     # compute error
@@ -363,20 +368,20 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     mse = np.mean(residuals**2)
     rmse = np.sqrt(mse)
     mape = np.mean(np.abs((y - y_model) / y))
-    print(f"debitbrut: mae={mae}, mse = {mse}, rmse={rmse}, mape={mape}", flush=True)
+    print(f"flow_secondary: mae={mae}, mse = {mse}, rmse={rmse}, mape={mape}", flush=True)
 
     # overview_dict[ofile]["sources"]["pupitre"]
-    symbol = "Q_brut"
+    symbol = "Q_secondary"
     yunit = ureg.meter**3 / ureg.hour  # see magnetdata.py L394
 
     my_ax = plt.gca()
-    legends = ["debitbrut"]
-    xdf.plot(x="t", y="debitbrut", ax=my_ax)
+    legends = ["flow_secondary"]
+    xdf.plot(x="t", y="flow_secondary", ax=my_ax)
     legends.append("ymodel")
     my_ax.plot(xdf["t"].to_numpy(), y_model, marker="*", alpha=0.2)
     plt.legend(legends)
     plt.grid()
-    plt.title(f"Debitbrut(Pmagnet) model")
+    plt.title(f"Secondary Flow(Pmagnet) model")
     plt.xlabel("t[s]")
     plt.ylabel(f"{symbol} [{yunit:~P}]")
     plt.show()

@@ -228,11 +228,14 @@ class WaterFlow:
     
     def debitbrut(self, power: float) -> float:
         """
-        Compute gross flow rate (debitbrut) as function of power using hysteresis model.
+        Compute secondary cooling loop flow rate as function of power using hysteresis model.
         
         This method uses a multi-level hysteresis model to account for the fact that
         flow rate control depends not only on current power but also on the direction
         of power change (increasing vs decreasing).
+        
+        Note: 'debitbrut' is the original French term for secondary loop flow rate.
+        In new CSV files, prefer the column name 'flow_secondary' for clarity.
         
         Based on the hysteresis model from examples/hysteresis.py
         
@@ -240,7 +243,7 @@ class WaterFlow:
             power: Magnet power [MW] (scalar or array)
             
         Returns:
-            Gross flow rate [m³/h]
+            Secondary cooling loop flow rate [m³/h]
             
         Raises:
             ValueError: If hysteresis parameters are not configured

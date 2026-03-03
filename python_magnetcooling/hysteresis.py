@@ -182,7 +182,7 @@ def estimate_hysteresis_parameters(
     x_col : str, default="x"
         Name of the input column (e.g., "Pmagnet")
     y_col : str, default="y"
-        Name of the output column (e.g., "debitbrut")
+        Name of the output column (e.g., "flow_secondary" for secondary cooling loop)
     n_levels : int, optional
         If provided, cluster y values into this many discrete levels using KMeans.
         If None, auto-detect distinct levels (best for already-discrete data).
@@ -393,7 +393,7 @@ def remove_low_x_outliers(
     >>> import pandas as pd
     >>> df = pd.read_csv("magnet_data.csv")
     >>> df_clean = remove_low_x_outliers(
-    ...     df, x_col="Pmagnet", y_col="debitbrut",
+    ...     df, x_col="Pmagnet", y_col="flow_secondary",
     ...     x_percentile=25, method="iqr", threshold=1.5, verbose=True
     ... )
     """
