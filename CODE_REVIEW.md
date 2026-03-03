@@ -20,7 +20,7 @@
 | `_compute_mixed_outlet_temp` unused `pressure` param (issue #7) | `Z2Ab6` branch | Parameter removed; method now takes only `channels` |
 | Duplicate class definitions in `thermohydraulics.py` (issue #8) | `Z2Ab6` branch | All dataclasses imported from `channel.py`; no local copies |
 | OOP modules not used by main solver (issue #9) | `Z2Ab6` branch | `ThermalHydraulicCalculator` now routes through `correlations.py` / `friction.py` |
-| `fuzzy_factor` silently ignored for Dittus/Colburn/Silverberg (issue #3) | `Z2Ab6` branch | Resolved in the **main path**: OOP `HeatCorrelation` subclasses correctly apply `self.fuzzy_factor`. Legacy `cooling.py` functions still do not forward `fuzzy` (see below). |
+| `fuzzy_factor` incorrectly applied to Dittus/Colburn/Silverberg in `correlations.py` | this branch | `fuzzy` is Montgomery-only; removed `self.fuzzy_factor *` from `DittusBoelterCorrelation`, `ColburnCorrelation`, `SilverbergCorrelation` |
 
 ---
 
@@ -56,25 +56,6 @@ to work on a copy, or document the mutation prominently in the docstring.
 ---
 
 ## Remaining Code Quality Issues
-
-### 3 (partial). `fuzzy` still ignored in legacy `cooling.py` for Dittus/Colburn/Silverberg
-
-`Dittus`, `Colburn`, and `Silverberg` in `cooling.py` accept a `fuzzy`
-parameter but never pass it to `hcorrelation`:
-
-```python
-def Dittus(Tw, Pw, dPw, U, Dh, L, friction, fuzzy: float = 1.0, pextra: float = 1):
-    params = (0.023, 0.8, 0.4)
-    h = hcorrelation(params, Tw, Pw, dPw, U, Dh, L, friction, pextra, "Dittus")
-    return h   # fuzzy accepted but ignored
-```
-
-The main computation path is unaffected (OOP classes in `correlations.py`
-apply `fuzzy_factor` correctly). But callers using `cooling.getHeatCoeff()`
-directly with `model="Dittus"` will have `fuzzy` silently discarded.
-
-Fix: `return fuzzy * hcorrelation(...)` in `Dittus`, `Colburn`, and
-`Silverberg`, or add a deprecation warning directing callers to the OOP API.
 
 ### 6. Global warning suppression in `waterflow.py` (`lines 15-19`)
 
@@ -126,7 +107,6 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="pint")
 
 | # | File | Line(s) | Fix |
 |---|------|---------|-----|
-| 3 | `cooling.py` | 85, 102, 119 | Apply `fuzzy` in legacy functions: `return fuzzy * hcorrelation(...)` |
 | 4 | `cooling.py` | 233 | Change `uguess=0` default to `1.0` (or guard `U = max(uguess, 1e-3)`) |
 | 5 | `thermohydraulics.py` | 248-249 | Use `dataclasses.replace(inputs, ...)` instead of mutating in-place |
 | 6 | `waterflow.py` | 15-19 | Replace `simplefilter("ignore")` with targeted pint filter |

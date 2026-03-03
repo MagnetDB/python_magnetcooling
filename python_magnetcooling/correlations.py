@@ -141,8 +141,8 @@ class DittusBoelterCorrelation(HeatCorrelation):
             )
         
         nusselt = self.compute_nusselt(reynolds, state.prandtl, 0.023, 0.8, 0.4)
-        h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
-        
+        h = nusselt * state.thermal_conductivity / hydraulic_diameter
+
         return h
 
 
@@ -170,8 +170,8 @@ class ColburnCorrelation(HeatCorrelation):
         )
         
         nusselt = self.compute_nusselt(reynolds, state.prandtl, 0.023, 0.8, 0.3)
-        h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
-        
+        h = nusselt * state.thermal_conductivity / hydraulic_diameter
+
         return h
 
 
@@ -199,8 +199,8 @@ class SilverbergCorrelation(HeatCorrelation):
         )
         
         nusselt = self.compute_nusselt(reynolds, state.prandtl, 0.015, 0.85, 0.3)
-        h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
-        
+        h = nusselt * state.thermal_conductivity / hydraulic_diameter
+
         return h
 
 
