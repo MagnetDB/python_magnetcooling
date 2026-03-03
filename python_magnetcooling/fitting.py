@@ -53,7 +53,7 @@ Usage
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, List, Callable
+from typing import Optional, List, Tuple, Callable
 import logging
 
 import numpy as np
@@ -234,6 +234,159 @@ class FlowPressureFit:
     back_pressure_std: float = 0.0
     flow_fit: Optional[FitResult] = None
     pressure_fit: Optional[FitResult] = None
+
+
+@dataclass(frozen=True)
+class HysteresisFit:
+    """
+    Result of hysteresis parameter estimation.
+
+    Contains hysteresis model parameters extracted from power/flow time-series data.
+    Each threshold tuple represents (ascending_threshold, descending_threshold) pairs
+    that define when the flow rate changes as power increases vs decreases.
+
+    Attributes
+    ----------
+    thresholds : List[Tuple[float, float]]
+        List of (ascending, descending) threshold pairs [MW].
+        Ordered from lowest to highest level.
+    low_values : List[float]
+        Flow rate values for low state at each threshold level [m³/h].
+        Length must match thresholds.
+    high_values : List[float]
+        Flow rate values for high state at each threshold level [m³/h].
+        Length must match thresholds.
+    diagnostics : dict
+        Diagnostic information from fitting process including:
+        - n_transitions: Number of transitions detected
+        - n_levels_found: Number of distinct levels found
+        - n_valid_levels: Number of valid threshold pairs
+        - ascending_obs: Observation counts per level (ascending)
+        - descending_obs: Observation counts per level (descending)
+
+    Examples
+    --------
+    >>> hyst_fit = HysteresisFit(
+    ...     thresholds=[(3.0, 2.0), (8.0, 6.0), (12.0, 10.0)],
+    ...     low_values=[100, 200, 300, 400],
+    ...     high_values=[100, 250, 350, 450],
+    ...     diagnostics={'n_transitions': 42, 'n_valid_levels': 3}
+    ... )
+    >>> print(f"Number of levels: {len(hyst_fit.thresholds)}")
+    Number of levels: 3
+
+    Notes
+    -----
+    Use this with build_waterflow_with_hysteresis() to create a WaterFlow
+    object with hysteresis support, or access the parameters directly to
+    apply the hysteresis model using python_magnetcooling.hysteresis.multi_level_hysteresis().
+    """
+
+    thresholds: List[Tuple[float, float]]
+    low_values: List[float]
+    high_values: List[float]
+    diagnostics: dict
+
+
+@dataclass(frozen=True)
+class FitMetrics:
+    """
+    Fit quality metrics for model evaluation.
+
+    Provides multiple statistical measures to assess how well a fitted model
+    matches the raw data. Use these metrics to decide if a refit is necessary.
+
+    Attributes
+    ----------
+    rmse : float
+        Root Mean Square Error - overall fit quality metric.
+        Lower is better. Units match the data being fitted.
+    mae : float
+        Mean Absolute Error - average absolute deviation.
+        More robust to outliers than RMSE. Lower is better.
+    max_error : float
+        Maximum absolute error - worst-case deviation.
+        Useful for identifying problematic regions.
+    r_squared : float
+        Coefficient of determination (R²) - fraction of variance explained.
+        Range: -∞ to 1.0. Values close to 1.0 indicate excellent fit.
+    mape : float
+        Mean Absolute Percentage Error [%].
+        Useful for comparing fits across different scales.
+        Only computed if all true values are non-zero.
+    n_points : int
+        Number of data points used in calculation.
+
+    Examples
+    --------
+    >>> metrics = FitMetrics(rmse=12.5, mae=8.3, max_error=35.2,
+    ...                      r_squared=0.985, mape=2.1, n_points=100)
+    >>> if metrics.rmse > 20:
+    ...     print("Refit recommended: RMSE too high")
+    >>> print(f"Model explains {metrics.r_squared*100:.1f}% of variance")
+    Model explains 98.5% of variance
+
+    Notes
+    -----
+    **Interpretation Guidelines:**
+    
+    - RMSE/MAE: Compare to typical data magnitude. <5% is excellent, <10% is good.
+    - R²: >0.95 is excellent, >0.90 is good, <0.80 suggests poor fit.
+    - MAPE: <5% is excellent, <10% is good, >20% suggests refit needed.
+    - max_error: Check if worst deviation is acceptable for application.
+    
+    **When to Refit:**
+    
+    - R² < 0.90 or RMSE > 10% of data range
+    - Systematic patterns in residuals (not random scatter)
+    - Physical constraints violated (e.g., negative flow rates)
+    - New data available that wasn't used in original fit
+    """
+
+    rmse: float
+    mae: float
+    max_error: float
+    r_squared: float
+    mape: Optional[float]
+    n_points: int
+
+    def __str__(self) -> str:
+        """Human-readable summary of fit quality."""
+        lines = [
+            "Fit Quality Metrics:",
+            f"  RMSE:      {self.rmse:.4f}",
+            f"  MAE:       {self.mae:.4f}",
+            f"  Max Error: {self.max_error:.4f}",
+            f"  R²:        {self.r_squared:.6f}",
+        ]
+        if self.mape is not None:
+            lines.append(f"  MAPE:      {self.mape:.2f}%")
+        lines.append(f"  N points:  {self.n_points}")
+        return "\n".join(lines)
+
+    def is_good_fit(
+        self, rmse_threshold: float = None, r_squared_threshold: float = 0.90
+    ) -> bool:
+        """
+        Quick check if fit quality is acceptable.
+
+        Parameters
+        ----------
+        rmse_threshold : float, optional
+            Maximum acceptable RMSE. If None, only checks R².
+        r_squared_threshold : float, default=0.90
+            Minimum acceptable R².
+
+        Returns
+        -------
+        bool
+            True if fit meets quality thresholds.
+        """
+        if self.r_squared < r_squared_threshold:
+            return False
+        if rmse_threshold is not None and self.rmse > rmse_threshold:
+            return False
+        return True
 
 
 # =============================================================================
@@ -1283,6 +1436,196 @@ def fit_hydraulic_system(
 
 
 # =============================================================================
+# Hysteresis Fitting
+# =============================================================================
+
+
+def fit_hysteresis_parameters(
+    power: np.ndarray,
+    flow_rate: np.ndarray,
+    n_levels: Optional[int] = None,
+    clean_outliers: bool = True,
+    outlier_percentile: float = 25,
+    outlier_method: str = "iqr",
+    outlier_threshold: float = 1.5,
+    verbose: bool = False,
+) -> HysteresisFit:
+    """
+    Fit multi-level hysteresis parameters from power/flow time-series data.
+
+    Estimates hysteresis model parameters by analyzing transitions in flow rate
+    as power changes. The model captures different flow rates for ascending vs
+    descending power, which is common in magnet cooling systems where operators
+    adjust flow rates conservatively.
+
+    Parameters
+    ----------
+    power : np.ndarray
+        Magnet power values [MW], sequential time-series data.
+    flow_rate : np.ndarray
+        Gross flow rate ("debitbrut") values [m³/h], same length as power.
+    n_levels : int, optional
+        Number of discrete levels to cluster flow rates into.
+        If None, auto-detects distinct levels from data.
+        Recommended: 3-5 levels for typical systems.
+    clean_outliers : bool, default=True
+        If True, remove outliers from low-power region before fitting.
+        Recommended to improve fit quality.
+    outlier_percentile : float, default=25
+        Define "low power" as values below this percentile (0-100).
+        Only used if clean_outliers=True.
+    outlier_method : str, default="iqr"
+        Outlier removal method: 'iqr', 'zscore', or 'both_dims'.
+        Only used if clean_outliers=True.
+    outlier_threshold : float, default=1.5
+        Threshold for outlier detection (IQR multiplier or z-score).
+        Only used if clean_outliers=True.
+    verbose : bool, default=False
+        If True, print diagnostic information during fitting.
+
+    Returns
+    -------
+    HysteresisFit
+        Fitted hysteresis parameters including thresholds, low_values,
+        high_values, and diagnostics.
+
+    Raises
+    ------
+    ValueError
+        If input arrays are invalid, empty, or have different lengths.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from python_magnetcooling.fitting import fit_hysteresis_parameters
+    >>> 
+    >>> # Load magnet run data
+    >>> df = pd.read_csv("magnet_data.csv")
+    >>> power = df["Pmagnet"].values  # MW
+    >>> flow = df["debitbrut"].values  # m³/h
+    >>> 
+    >>> # Fit hysteresis model with 3 levels
+    >>> hyst_fit = fit_hysteresis_parameters(
+    ...     power, flow,
+    ...     n_levels=3,
+    ...     clean_outliers=True,
+    ...     verbose=True
+    ... )
+    >>> 
+    >>> print(f"Thresholds: {hyst_fit.thresholds}")
+    >>> print(f"Low values: {hyst_fit.low_values}")
+    >>> print(f"High values: {hyst_fit.high_values}")
+    >>> print(f"Valid levels: {hyst_fit.diagnostics['n_valid_levels']}")
+
+    See Also
+    --------
+    build_waterflow_with_hysteresis : Create WaterFlow with hysteresis support.
+    python_magnetcooling.hysteresis.estimate_hysteresis_parameters : Underlying function.
+    python_magnetcooling.hysteresis.multi_level_hysteresis : Apply the model.
+
+    Notes
+    -----
+    The function wraps the core hysteresis estimation from the hysteresis module
+    and provides a fitting interface consistent with other fitting functions in
+    this module.
+
+    The data must be sequential (time-ordered) for transition detection to work.
+    Randomly sampled or re-ordered data will produce invalid results.
+    """
+    # Validate inputs
+    if not isinstance(power, np.ndarray):
+        raise ValueError(f"power must be a numpy array, got {type(power)}")
+    if not isinstance(flow_rate, np.ndarray):
+        raise ValueError(f"flow_rate must be a numpy array, got {type(flow_rate)}")
+
+    if len(power) == 0 or len(flow_rate) == 0:
+        raise ValueError("power and flow_rate arrays cannot be empty")
+
+    if len(power) != len(flow_rate):
+        raise ValueError(
+            f"power and flow_rate must have same length. "
+            f"Got {len(power)} and {len(flow_rate)}"
+        )
+
+    if np.any(~np.isfinite(power)) or np.any(~np.isfinite(flow_rate)):
+        raise ValueError("power and flow_rate arrays must not contain NaN or Inf")
+
+    if len(power) < 10:
+        raise ValueError(
+            f"Insufficient data points for hysteresis fitting. "
+            f"Need at least 10, got {len(power)}"
+        )
+
+    logger.info(
+        f"Fitting hysteresis parameters: {len(power)} points, "
+        f"n_levels={n_levels}, clean_outliers={clean_outliers}"
+    )
+
+    # Create DataFrame for processing
+    import pandas as pd
+    df = pd.DataFrame({"Pmagnet": power, "debitbrut": flow_rate})
+
+    # Clean outliers if requested
+    if clean_outliers:
+        from .hysteresis import remove_low_x_outliers
+
+        logger.debug(
+            f"Removing outliers: percentile={outlier_percentile}, "
+            f"method={outlier_method}, threshold={outlier_threshold}"
+        )
+
+        df_clean = remove_low_x_outliers(
+            df,
+            x_col="Pmagnet",
+            y_col="debitbrut",
+            x_percentile=outlier_percentile,
+            method=outlier_method,
+            threshold=outlier_threshold,
+            verbose=verbose,
+        )
+
+        n_removed = len(df) - len(df_clean)
+        logger.info(f"Removed {n_removed} outliers ({100 * n_removed / len(df):.1f}%)")
+    else:
+        df_clean = df
+
+    # Estimate hysteresis parameters
+    from .hysteresis import estimate_hysteresis_parameters
+
+    result = estimate_hysteresis_parameters(
+        df_clean, x_col="Pmagnet", y_col="debitbrut", n_levels=n_levels, verbose=verbose
+    )
+
+    # Extract results
+    thresholds = result["thresholds"]
+    low_values = result["low_values"]
+    high_values = result["high_values"]
+    diagnostics = result["diagnostics"]
+
+    if not thresholds:
+        raise ValueError(
+            "No valid hysteresis levels detected. Try adjusting n_levels or "
+            "check that your data contains clear flow rate transitions."
+        )
+
+    logger.info(
+        f"Hysteresis fit complete: {len(thresholds)} valid levels, "
+        f"{diagnostics['n_transitions']} transitions analyzed"
+    )
+
+    # Create and return result
+    hyst_fit = HysteresisFit(
+        thresholds=thresholds,
+        low_values=low_values,
+        high_values=high_values,
+        diagnostics=diagnostics,
+    )
+
+    return hyst_fit
+
+
+# =============================================================================
 # WaterFlow Construction
 # =============================================================================
 
@@ -1366,3 +1709,722 @@ def build_waterflow(
     )
 
     return waterflow
+
+
+def build_waterflow_with_hysteresis(
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
+    hyst_fit: HysteresisFit,
+) -> "WaterFlow":
+    """
+    Construct a WaterFlow object with hysteresis parameters from fitted data.
+
+    This function combines standard hydraulic parameters with hysteresis model
+    parameters to create a WaterFlow object that supports both standard flow
+    calculations and power-dependent flow with hysteresis (debitbrut method).
+
+    Parameters
+    ----------
+    pump_fit : PumpSpeedFit
+        Pump speed fit results.
+    flow_pressure_fit : FlowPressureFit
+        Flow rate and pressure fit results.
+    hyst_fit : HysteresisFit
+        Hysteresis parameter fit results.
+
+    Returns
+    -------
+    WaterFlow
+        Configured WaterFlow instance with hysteresis support.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from python_magnetcooling.fitting import (
+    ...     fit_hydraulic_system,
+    ...     fit_hysteresis_parameters,
+    ...     build_waterflow_with_hysteresis
+    ... )
+    >>> 
+    >>> # Fit hydraulic system
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
+    ...     current, pump_speed, flow, pressure, back_pressure,
+    ...     imax=28000, method="simple"
+    ... )
+    >>> 
+    >>> # Fit hysteresis from power/flow data
+    >>> hyst_fit = fit_hysteresis_parameters(power, flow_rate, n_levels=3)
+    >>> 
+    >>> # Build complete WaterFlow object
+    >>> waterflow = build_waterflow_with_hysteresis(
+    ...     pump_fit, flow_pressure_fit, hyst_fit
+    ... )
+    >>> 
+    >>> # Use standard methods
+    >>> flow_at_20kA = waterflow.flow_rate(20000)
+    >>> 
+    >>> # Use hysteresis method
+    >>> flow_at_10MW = waterflow.debitbrut(10.0)  # MW
+
+    See Also
+    --------
+    build_waterflow : Build WaterFlow without hysteresis.
+    fit_hysteresis_parameters : Fit hysteresis parameters.
+    fit_hydraulic_system : Fit standard hydraulic parameters.
+    """
+    from .waterflow import WaterFlow
+
+    logger.debug("Building WaterFlow object with hysteresis from fit results")
+
+    waterflow = WaterFlow(
+        pump_speed_min=pump_fit.vp0,
+        pump_speed_max=pump_fit.vpmax,
+        flow_min=flow_pressure_fit.f0,
+        flow_max=flow_pressure_fit.fmax,
+        pressure_max=flow_pressure_fit.pmax,
+        pressure_min=flow_pressure_fit.pmin,
+        pressure_back=flow_pressure_fit.back_pressure,
+        current_max=pump_fit.imax,
+        hysteresis_thresholds=hyst_fit.thresholds,
+        hysteresis_low_values=hyst_fit.low_values,
+        hysteresis_high_values=hyst_fit.high_values,
+    )
+
+    logger.info(
+        f"WaterFlow object created with hysteresis: "
+        f"pump {waterflow.pump_speed_min}-{waterflow.pump_speed_max} rpm, "
+        f"flow {waterflow.flow_min}-{waterflow.flow_max} l/s, "
+        f"pressure {waterflow.pressure_min}-{waterflow.pressure_max} bar, "
+        f"Imax {waterflow.current_max} A, "
+        f"hysteresis levels: {len(hyst_fit.thresholds)}"
+    )
+
+    return waterflow
+
+
+# ============================================================================
+# Fit Quality Metrics
+# ============================================================================
+
+
+def _compute_metrics_from_arrays(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> FitMetrics:
+    """
+    Compute fit quality metrics from true and predicted values.
+
+    Parameters
+    ----------
+    y_true : np.ndarray
+        True/measured values
+    y_pred : np.ndarray
+        Predicted/fitted values
+
+    Returns
+    -------
+    FitMetrics
+        Comprehensive fit quality metrics
+    """
+    residuals = y_true - y_pred
+    n_points = len(y_true)
+
+    # RMSE
+    rmse = np.sqrt(np.mean(residuals**2))
+
+    # MAE
+    mae = np.mean(np.abs(residuals))
+
+    # Max error
+    max_error = np.max(np.abs(residuals))
+
+    # R²
+    ss_res = np.sum(residuals**2)
+    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+    r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+    # MAPE (only if no zeros in true values)
+    if np.all(y_true != 0):
+        mape = np.mean(np.abs(residuals / y_true)) * 100
+    else:
+        mape = None
+
+    return FitMetrics(
+        rmse=float(rmse),
+        mae=float(mae),
+        max_error=float(max_error),
+        r_squared=float(r_squared),
+        mape=float(mape) if mape is not None else None,
+        n_points=int(n_points),
+    )
+
+
+def compute_pump_fit_metrics(
+    current: np.ndarray, pump_speed: np.ndarray, pump_fit: PumpSpeedFit
+) -> FitMetrics:
+    """
+    Compute fit quality metrics for pump speed model.
+
+    Evaluates how well the fitted quadratic model matches the measured
+    pump speed data. Use these metrics to decide if a refit is necessary.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A]
+    pump_speed : np.ndarray
+        Measured pump speed values [rpm]
+    pump_fit : PumpSpeedFit
+        Fitted pump parameters from fit_pump_speed()
+
+    Returns
+    -------
+    FitMetrics
+        Fit quality metrics including RMSE, MAE, R², etc.
+
+    Examples
+    --------
+    >>> pump_fit, _ = fit_hydraulic_system(current, pump_speed, flow, pressure, back_p)
+    >>> metrics = compute_pump_fit_metrics(current, pump_speed, pump_fit)
+    >>> print(metrics)
+    Fit Quality Metrics:
+      RMSE:      12.5432
+      MAE:       8.3421
+      Max Error: 35.2134
+      R²:        0.985421
+      MAPE:      2.13%
+      N points:  100
+    >>> if not metrics.is_good_fit(rmse_threshold=20):
+    ...     print("Refit recommended")
+
+    Notes
+    -----
+    **Typical acceptable values for pump fits:**
+    
+    - RMSE: <20 rpm for standard pumps
+    - R²: >0.95 is excellent, >0.90 is acceptable
+    - MAE: <15 rpm indicates good fit
+    
+    Consider refit if R² < 0.90 or if residuals show systematic patterns.
+    """
+    # Reconstruct fitted pump speed
+    vp_fit = pump_fit.vpmax * (current / pump_fit.imax) ** 2 + pump_fit.vp0
+
+    return _compute_metrics_from_arrays(pump_speed, vp_fit)
+
+
+def compute_flow_fit_metrics(
+    current: np.ndarray,
+    flow_rate: np.ndarray,
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
+) -> FitMetrics:
+    """
+    Compute fit quality metrics for flow rate model.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A]
+    flow_rate : np.ndarray
+        Measured flow rate values [l/s]
+    pump_fit : PumpSpeedFit
+        Fitted pump parameters
+    flow_pressure_fit : FlowPressureFit
+        Fitted flow/pressure parameters
+
+    Returns
+    -------
+    FitMetrics
+        Fit quality metrics
+
+    Examples
+    --------
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(...)
+    >>> metrics = compute_flow_fit_metrics(current, flow_rate, pump_fit,
+    ...                                     flow_pressure_fit)
+    >>> print(f"Flow fit R² = {metrics.r_squared:.4f}")
+
+    Notes
+    -----
+    **Typical acceptable values:**
+    
+    - RMSE: <2 l/s for most systems
+    - R²: >0.90 is good
+    - Consider refit if MAPE > 10%
+    """
+    # Reconstruct fitted flow
+    vp_fit = pump_fit.vpmax * (current / pump_fit.imax) ** 2 + pump_fit.vp0
+    flow_fit = flow_pressure_fit.f0 + flow_pressure_fit.fmax * vp_fit / (
+        pump_fit.vpmax + pump_fit.vp0
+    )
+
+    return _compute_metrics_from_arrays(flow_rate, flow_fit)
+
+
+def compute_pressure_fit_metrics(
+    current: np.ndarray,
+    pressure: np.ndarray,
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
+) -> FitMetrics:
+    """
+    Compute fit quality metrics for pressure model.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A]
+    pressure : np.ndarray
+        Measured pressure values [bar]
+    pump_fit : PumpSpeedFit
+        Fitted pump parameters
+    flow_pressure_fit : FlowPressureFit
+        Fitted flow/pressure parameters
+
+    Returns
+    -------
+    FitMetrics
+        Fit quality metrics
+
+    Examples
+    --------
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(...)
+    >>> metrics = compute_pressure_fit_metrics(current, pressure, pump_fit,
+    ...                                         flow_pressure_fit)
+    >>> if metrics.rmse > 1.0:
+    ...     print("Pressure fit has high error, consider refit")
+
+    Notes
+    -----
+    **Typical acceptable values:**
+    
+    - RMSE: <0.5 bar is excellent, <1.0 bar is acceptable
+    - R²: >0.95 is good
+    - Check that fitted Pmin and Pmax are physically reasonable
+    """
+    # Reconstruct fitted pressure
+    vp_fit = pump_fit.vpmax * (current / pump_fit.imax) ** 2 + pump_fit.vp0
+    pressure_fit = flow_pressure_fit.pmin + flow_pressure_fit.pmax * (
+        vp_fit / (pump_fit.vpmax + pump_fit.vp0)
+    ) ** 2
+
+    return _compute_metrics_from_arrays(pressure, pressure_fit)
+
+
+def compute_hysteresis_fit_metrics(
+    x: np.ndarray, y: np.ndarray, hyst_fit: HysteresisFit
+) -> FitMetrics:
+    """
+    Compute fit quality metrics for hysteresis model.
+
+    Evaluates how well the fitted hysteresis model reproduces the measured
+    power-flow (or similar) relationship. Use to assess model quality and
+    decide if parameter re-estimation is needed.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Input values (e.g., power in MW)
+    y : np.ndarray
+        Output values (e.g., flow rate in m³/h)
+    hyst_fit : HysteresisFit
+        Fitted hysteresis parameters from fit_hysteresis_parameters()
+
+    Returns
+    -------
+    FitMetrics
+        Fit quality metrics
+
+    Examples
+    --------
+    >>> hyst_fit = fit_hysteresis_parameters(power, flow_rate, n_levels=3)
+    >>> metrics = compute_hysteresis_fit_metrics(power, flow_rate, hyst_fit)
+    >>> print(metrics)
+    >>> if not metrics.is_good_fit(r_squared_threshold=0.85):
+    ...     print("Hysteresis model quality is poor, consider:")
+    ...     print("  - Different n_levels parameter")
+    ...     print("  - Outlier removal before fitting")
+    ...     print("  - Check for data quality issues")
+
+    Notes
+    -----
+    **Interpretation for hysteresis models:**
+    
+    - R² > 0.90: Excellent fit, clear hysteresis behavior
+    - R² 0.80-0.90: Good fit, hysteresis present but with noise
+    - R² < 0.80: Poor fit, consider:
+      * Different number of levels
+      * Better outlier removal
+      * Data may not exhibit clear hysteresis
+    
+    **When to refit:**
+    
+    - New data collected that shows different behavior
+    - Systematic deviations in specific power ranges
+    - Control system parameters changed
+    - RMSE > 10% of typical flow rate range
+    """
+    from .hysteresis import multi_level_hysteresis
+
+    # Reconstruct fitted values
+    y_fit = multi_level_hysteresis(
+        x, hyst_fit.thresholds, hyst_fit.low_values, hyst_fit.high_values
+    )
+
+    return _compute_metrics_from_arrays(y, y_fit)
+
+
+def compute_all_hydraulic_metrics(
+    current: np.ndarray,
+    pump_speed: np.ndarray,
+    flow_rate: np.ndarray,
+    pressure: np.ndarray,
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
+) -> dict[str, FitMetrics]:
+    """
+    Compute fit quality metrics for all hydraulic fits at once.
+
+    Convenient function to evaluate pump, flow, and pressure fits together.
+    Returns a dictionary with metrics for each component.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values [A]
+    pump_speed : np.ndarray
+        Measured pump speed values [rpm]
+    flow_rate : np.ndarray
+        Measured flow rate values [l/s]
+    pressure : np.ndarray
+        Measured pressure values [bar]
+    pump_fit : PumpSpeedFit
+        Fitted pump parameters
+    flow_pressure_fit : FlowPressureFit
+        Fitted flow/pressure parameters
+
+    Returns
+    -------
+    dict[str, FitMetrics]
+        Dictionary with keys 'pump', 'flow', 'pressure' containing
+        respective FitMetrics objects
+
+    Examples
+    --------
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
+    ...     current, pump_speed, flow, pressure, back_p
+    ... )
+    >>> metrics = compute_all_hydraulic_metrics(
+    ...     current, pump_speed, flow, pressure, pump_fit, flow_pressure_fit
+    ... )
+    >>> 
+    >>> print("=== Fit Quality Summary ===")
+    >>> for name, m in metrics.items():
+    ...     print(f"\\n{name.upper()}:")
+    ...     print(f"  RMSE = {m.rmse:.3f}, R² = {m.r_squared:.4f}")
+    ...     if not m.is_good_fit():
+    ...         print(f"  ⚠ WARNING: {name} fit quality is low!")
+    >>> 
+    >>> # Check if any fit needs improvement
+    >>> poor_fits = [name for name, m in metrics.items() 
+    ...              if not m.is_good_fit(r_squared_threshold=0.90)]
+    >>> if poor_fits:
+    ...     print(f"\\nConsider refitting: {', '.join(poor_fits)}")
+
+    Notes
+    -----
+    This is the recommended way to evaluate overall hydraulic system fit quality.
+    It provides a comprehensive view of all model components at once.
+    """
+    return {
+        "pump": compute_pump_fit_metrics(current, pump_speed, pump_fit),
+        "flow": compute_flow_fit_metrics(current, flow_rate, pump_fit, flow_pressure_fit),
+        "pressure": compute_pressure_fit_metrics(
+            current, pressure, pump_fit, flow_pressure_fit
+        ),
+    }
+
+
+# ============================================================================
+# Plotting Functions
+# ============================================================================
+
+
+def plot_pump_fit(
+    current: np.ndarray,
+    pump_speed: np.ndarray,
+    pump_fit: PumpSpeedFit,
+    xlabel: str = "Current (A)",
+    ylabel: str = "Pump Speed (rpm)",
+    title: Optional[str] = None,
+    show: bool = True,
+    save_path: Optional[str] = None,
+    figsize: Tuple[float, float] = (10, 6),
+) -> None:
+    """
+    Plot raw pump speed data and fitted curve.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values (A)
+    pump_speed : np.ndarray
+        Measured pump speed values (rpm)
+    pump_fit : PumpFit
+        Fitted pump parameters from fit_pump_speed()
+    xlabel : str, default="Current (A)"
+        Label for x-axis
+    ylabel : str, default="Pump Speed (rpm)"
+        Label for y-axis
+    title : str, optional
+        Plot title
+    show : bool, default=True
+        Display plot interactively
+    save_path : str, optional
+        Path to save plot
+    figsize : Tuple[float, float], default=(10, 6)
+        Figure size (width, height) in inches
+
+    Examples
+    --------
+    >>> pump_fit, _ = fit_hydraulic_system(current, pump_speed, flow, pressure, back_p)
+    >>> plot_pump_fit(current, pump_speed, pump_fit)
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        logger.warning("matplotlib not available. Cannot create plot.")
+        return
+
+    # Generate fitted curve
+    i_range = np.linspace(current.min(), current.max(), 200)
+    vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Raw data
+    ax.plot(current, pump_speed, 'b.', markersize=5, alpha=0.5, label='Measured data')
+    
+    # Fitted curve
+    ax.plot(i_range, vp_fit, 'r-', linewidth=2, label='Fitted model')
+    
+    # Mark Imax if available
+    if pump_fit.imax:
+        ax.axvline(x=pump_fit.imax, color='g', linestyle='--', alpha=0.7,
+                  linewidth=1.5, label=f'Imax = {pump_fit.imax:.0f} A')
+
+    # Mark Vp0 and Vpmax
+    ax.axhline(y=pump_fit.vp0, color='orange', linestyle=':', alpha=0.7,
+              linewidth=1, label=f'Vp0 = {pump_fit.vp0:.1f} rpm')
+    ax.axhline(y=pump_fit.vpmax + pump_fit.vp0, color='purple', linestyle=':', alpha=0.7,
+              linewidth=1, label=f'Vpmax = {pump_fit.vpmax + pump_fit.vp0:.1f} rpm')
+
+    ax.set_xlabel(xlabel, fontsize=11)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    if title:
+        ax.set_title(title, fontsize=13, fontweight='bold')
+    else:
+        ax.set_title('Pump Speed vs Current', fontsize=13, fontweight='bold')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        logger.info(f"Plot saved to {save_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def plot_flow_pressure_fit(
+    current: np.ndarray,
+    flow_rate: np.ndarray,
+    pressure: np.ndarray,
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
+    xlabel: str = "Current (A)",
+    title: Optional[str] = None,
+    show: bool = True,
+    save_path: Optional[str] = None,
+    figsize: Tuple[float, float] = (12, 5),
+) -> None:
+    """
+    Plot raw flow and pressure data with fitted curves.
+
+    Parameters
+    ----------
+    current : np.ndarray
+        Current values (A)
+    flow_rate : np.ndarray
+        Measured flow rate values (l/s)
+    pressure : np.ndarray
+        Measured pressure values (bar)
+    pump_fit : PumpFit
+        Fitted pump parameters
+    flow_pressure_fit : FlowPressureFit
+        Fitted flow and pressure parameters
+    xlabel : str, default="Current (A)"
+        Label for x-axis
+    title : str, optional
+        Plot title
+    show : bool, default=True
+        Display plot interactively
+    save_path : str, optional
+        Path to save plot
+    figsize : Tuple[float, float], default=(12, 5)
+        Figure size (width, height) in inches
+
+    Examples
+    --------
+    >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(current, pump_speed,
+    ...                                                     flow, pressure, back_p)
+    >>> plot_flow_pressure_fit(current, flow, pressure, pump_fit, flow_pressure_fit)
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        logger.warning("matplotlib not available. Cannot create plot.")
+        return
+
+    # Generate fitted curves
+    i_range = np.linspace(current.min(), current.max(), 200)
+    vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
+    
+    # Flow: F(I) = F0 + Fmax * Vp(I)/(Vpmax + Vp0)
+    flow_fit = flow_pressure_fit.f0 + flow_pressure_fit.fmax * vp_fit / (
+        pump_fit.vpmax + pump_fit.vp0
+    )
+    
+    # Pressure: P(I) = Pmin + Pmax * [Vp(I)/(Vpmax + Vp0)]^2
+    pressure_fit = flow_pressure_fit.pmin + flow_pressure_fit.pmax * (
+        vp_fit / (pump_fit.vpmax + pump_fit.vp0)
+    ) ** 2
+
+    # Create subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+
+    # Plot 1: Flow Rate
+    ax1.plot(current, flow_rate, 'b.', markersize=5, alpha=0.5, label='Measured')
+    ax1.plot(i_range, flow_fit, 'r-', linewidth=2, label='Fitted model')
+    ax1.axhline(y=flow_pressure_fit.f0, color='orange', linestyle=':', alpha=0.7,
+               linewidth=1, label=f'F0 = {flow_pressure_fit.f0:.2f} l/s')
+    ax1.axhline(y=flow_pressure_fit.f0 + flow_pressure_fit.fmax, color='purple',
+               linestyle=':', alpha=0.7, linewidth=1,
+               label=f'Fmax = {flow_pressure_fit.fmax:.2f} l/s')
+    ax1.set_xlabel(xlabel, fontsize=11)
+    ax1.set_ylabel('Flow Rate (l/s)', fontsize=11)
+    ax1.legend(fontsize=9)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_title('Flow Rate vs Current', fontsize=12, fontweight='bold')
+
+    # Plot 2: Pressure
+    ax2.plot(current, pressure, 'b.', markersize=5, alpha=0.5, label='Measured')
+    ax2.plot(i_range, pressure_fit, 'r-', linewidth=2, label='Fitted model')
+    ax2.axhline(y=flow_pressure_fit.pmin, color='orange', linestyle=':', alpha=0.7,
+               linewidth=1, label=f'Pmin = {flow_pressure_fit.pmin:.2f} bar')
+    ax2.axhline(y=flow_pressure_fit.pmin + flow_pressure_fit.pmax, color='purple',
+               linestyle=':', alpha=0.7, linewidth=1,
+               label=f'Pmax = {flow_pressure_fit.pmax:.2f} bar')
+    if flow_pressure_fit.back_pressure:
+        ax2.axhline(y=flow_pressure_fit.back_pressure.mean, color='green',
+                   linestyle='--', alpha=0.7, linewidth=1,
+                   label=f'Pback = {flow_pressure_fit.back_pressure.mean:.2f} bar')
+    ax2.set_xlabel(xlabel, fontsize=11)
+    ax2.set_ylabel('Pressure (bar)', fontsize=11)
+    ax2.legend(fontsize=9)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_title('Pressure vs Current', fontsize=12, fontweight='bold')
+
+    if title:
+        fig.suptitle(title, fontsize=14, fontweight='bold')
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        logger.info(f"Plot saved to {save_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
+def plot_hysteresis_fit(
+    power: np.ndarray,
+    flow_rate: np.ndarray,
+    hyst_fit: HysteresisFit,
+    xlabel: str = "Power (MW)",
+    ylabel: str = "Flow Rate (m³/h)",
+    title: Optional[str] = None,
+    show: bool = True,
+    save_path: Optional[str] = None,
+    figsize: Tuple[float, float] = (12, 8),
+) -> None:
+    """
+    Plot raw power-flow data and fitted hysteresis model.
+
+    This is a convenience wrapper around hysteresis.plot_hysteresis_fit()
+    that works directly with fitting results.
+
+    Parameters
+    ----------
+    power : np.ndarray
+        Power values (MW)
+    flow_rate : np.ndarray
+        Flow rate values (m³/h)
+    hyst_fit : HysteresisFit
+        Fitted hysteresis parameters from fit_hysteresis_parameters()
+    xlabel : str, default="Power (MW)"
+        Label for x-axis
+    ylabel : str, default="Flow Rate (m³/h)"
+        Label for y-axis
+    title : str, optional
+        Plot title
+    show : bool, default=True
+        Display plot interactively
+    save_path : str, optional
+        Path to save plot
+    figsize : Tuple[float, float], default=(12, 8)
+        Figure size (width, height) in inches
+
+    Examples
+    --------
+    >>> hyst_fit = fit_hysteresis_parameters(power, flow_rate, n_levels=3)
+    >>> plot_hysteresis_fit(power, flow_rate, hyst_fit,
+    ...                     xlabel='Magnet Power (MW)',
+    ...                     ylabel='Cooling Flow (m³/h)')
+    """
+    try:
+        import matplotlib.pyplot as plt
+        from .hysteresis import plot_hysteresis_fit as _plot_hyst
+    except ImportError:
+        logger.warning("matplotlib not available. Cannot create plot.")
+        return
+
+    # Create DataFrame for compatibility with hysteresis plotting
+    import pandas as pd
+    df = pd.DataFrame({"x": power, "y": flow_rate})
+
+    # Use hysteresis module's plotting function
+    _plot_hyst(
+        df,
+        hyst_fit.thresholds,
+        hyst_fit.low_values,
+        hyst_fit.high_values,
+        x_col="x",
+        y_col="y",
+        xlabel=xlabel,
+        ylabel=ylabel,
+        title=title,
+        show=show,
+        save_path=save_path,
+        figsize=figsize,
+    )

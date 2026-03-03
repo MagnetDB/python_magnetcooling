@@ -8,9 +8,10 @@ This module handles:
 - Velocity calculations based on operating conditions
 """
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List
 import json
+import numpy as np
 from warnings import simplefilter
 from pint import UnitRegistry, Quantity
 
@@ -22,6 +23,9 @@ Quantity([])
 ureg = UnitRegistry()
 ureg.default_system = "SI"
 ureg.autoconvert_offset_to_baseunit = True
+
+# Import hysteresis model from hysteresis module
+from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
 
 
 @dataclass
@@ -41,6 +45,9 @@ class WaterFlow:
         pressure_min: Minimum pressure [bar]
         pressure_back: Back pressure [bar]
         current_max: Maximum operating current [A]
+        hysteresis_thresholds: List of (ascending, descending) power threshold tuples [MW]
+        hysteresis_low_values: Flow rates for low state at each level [m³/h]
+        hysteresis_high_values: Flow rates for high state at each level [m³/h]
     
     Examples:
         >>> flow = WaterFlow(
@@ -65,6 +72,9 @@ class WaterFlow:
     pressure_min: float = 4  # bar
     pressure_back: float = 4  # bar
     current_max: float = 28000  # A
+    hysteresis_thresholds: List[tuple] = field(default_factory=list)  # [(asc, desc), ...] in MW
+    hysteresis_low_values: List[float] = field(default_factory=list)  # m³/h
+    hysteresis_high_values: List[float] = field(default_factory=list)  # m³/h
     
     @classmethod
     def from_file(cls, filename: str) -> "WaterFlow":
@@ -92,6 +102,22 @@ class WaterFlow:
         with open(filename, "r") as f:
             params = json.load(f)
         
+        # Load hysteresis parameters if present
+        hysteresis_thresholds = []
+        hysteresis_low_values = []
+        hysteresis_high_values = []
+        
+        if "hysteresis" in params:
+            hyst = params["hysteresis"]
+            # Convert thresholds to list of tuples if they're lists
+            thresholds_raw = hyst.get("thresholds", [])
+            if thresholds_raw and isinstance(thresholds_raw[0], (list, tuple)):
+                hysteresis_thresholds = [tuple(t) for t in thresholds_raw]
+            else:
+                hysteresis_thresholds = thresholds_raw
+            hysteresis_low_values = hyst.get("low_values", [])
+            hysteresis_high_values = hyst.get("high_values", [])
+        
         return cls(
             pump_speed_min=params["Vp0"]["value"],
             pump_speed_max=params["Vpmax"]["value"],
@@ -100,7 +126,10 @@ class WaterFlow:
             pressure_max=params["Pmax"]["value"],
             pressure_min=params["Pmin"]["value"],
             pressure_back=params.get("BP", {"value": 4})["value"],
-            current_max=params["Imax"]["value"]
+            current_max=params["Imax"]["value"],
+            hysteresis_thresholds=hysteresis_thresholds,
+            hysteresis_low_values=hysteresis_low_values,
+            hysteresis_high_values=hysteresis_high_values
         )
     
     def pump_speed(self, current: float) -> float:
@@ -197,9 +226,78 @@ class WaterFlow:
         
         return self.flow_rate(current) / cross_section
     
+    def debitbrut(self, power: float) -> float:
+        """
+        Compute gross flow rate (debitbrut) as function of power using hysteresis model.
+        
+        This method uses a multi-level hysteresis model to account for the fact that
+        flow rate control depends not only on current power but also on the direction
+        of power change (increasing vs decreasing).
+        
+        Based on the hysteresis model from examples/hysteresis.py
+        
+        Args:
+            power: Magnet power [MW] (scalar or array)
+            
+        Returns:
+            Gross flow rate [m³/h]
+            
+        Raises:
+            ValueError: If hysteresis parameters are not configured
+            
+        Note:
+            Hysteresis parameters must be set either:
+            - Via from_file() loading a JSON with "hysteresis" section
+            - By directly setting hysteresis_thresholds (as list of tuples),
+              hysteresis_low_values, and hysteresis_high_values attributes
+              
+        Example:
+            >>> flow = WaterFlow()
+            >>> # Each threshold is (ascending, descending) tuple
+            >>> flow.hysteresis_thresholds = [(3, 2), (8, 6), (12, 10)]
+            >>> flow.hysteresis_low_values = [100, 200, 300, 400]
+            >>> flow.hysteresis_high_values = [100, 250, 350, 450]
+            >>> power_sequence = np.array([0, 5, 10, 15, 10, 5, 0])
+            >>> flow_rates = flow.debitbrut(power_sequence)
+        """
+        if not self.hysteresis_thresholds:
+            raise ValueError(
+                "Hysteresis parameters not configured. "
+                "Set hysteresis_thresholds (as list of (asc, desc) tuples), "
+                "hysteresis_low_values, and hysteresis_high_values before calling debitbrut()."
+            )
+        
+        if len(self.hysteresis_low_values) != len(self.hysteresis_thresholds):
+            raise ValueError(
+                f"hysteresis_low_values must have {len(self.hysteresis_thresholds)} "
+                f"elements (same as number of thresholds), got {len(self.hysteresis_low_values)}"
+            )
+        
+        if len(self.hysteresis_high_values) != len(self.hysteresis_thresholds):
+            raise ValueError(
+                f"hysteresis_high_values must have {len(self.hysteresis_thresholds)} "
+                f"elements (same as number of thresholds), got {len(self.hysteresis_high_values)}"
+            )
+        
+        # Convert scalar to array for processing
+        power_array = np.atleast_1d(power)
+        
+        # Apply hysteresis model
+        flow_rates = _multi_level_hysteresis(
+            power_array,
+            self.hysteresis_thresholds,
+            self.hysteresis_low_values,
+            self.hysteresis_high_values
+        )
+        
+        # Return scalar if input was scalar
+        if np.isscalar(power):
+            return float(flow_rates[0])
+        return flow_rates
+    
     def to_dict(self) -> dict:
         """Export parameters as dictionary"""
-        return {
+        result = {
             "Vp0": {"value": self.pump_speed_min, "unit": "rpm"},
             "Vpmax": {"value": self.pump_speed_max, "unit": "rpm"},
             "F0": {"value": self.flow_min, "unit": "l/s"},
@@ -209,6 +307,18 @@ class WaterFlow:
             "BP": {"value": self.pressure_back, "unit": "bar"},
             "Imax": {"value": self.current_max, "unit": "A"},
         }
+        
+        # Add hysteresis parameters if configured
+        if self.hysteresis_thresholds:
+            result["hysteresis"] = {
+                "thresholds": self.hysteresis_thresholds,
+                "low_values": self.hysteresis_low_values,
+                "high_values": self.hysteresis_high_values,
+                "unit_thresholds": "MW",
+                "unit_values": "m³/h"
+            }
+        
+        return result
     
     def to_file(self, filename: str) -> None:
         """Save parameters to JSON file"""
