@@ -2,6 +2,7 @@
 
 from python_magnetcooling.friction import (
     BlasiusFriction,
+    ConstantFriction,
     KarmanFriction,
     get_friction_model,
 )
