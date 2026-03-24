@@ -317,7 +317,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
 
     # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "flow_secondary", args.window, threshold_dict["flow_secondary"], overview_dict[ofile]["sources"]["pupitre"], show=True)
 
-    from .processing.hysteresis import (
+    from python_magnetcooling.hysteresis import (
         estimate_hysteresis_parameters,
         multi_level_hysteresis,
         remove_low_x_outliers,
@@ -372,7 +372,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     my_ax.plot(xdf["t"].to_numpy(), y_model, marker="*", alpha=0.2)
     plt.legend(legends)
     plt.grid()
-    plt.title(f"Secondary Flow(Pmagnet) model")
+    plt.title("Secondary Flow(Pmagnet) model")
     plt.xlabel("t[s]")
     plt.ylabel(f"{symbol} [{yunit:~P}]")
     plt.show()
