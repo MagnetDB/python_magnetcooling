@@ -33,10 +33,10 @@ __email__ = "christophe.trophime@lncmi.cnrs.fr"
 # Version is read from package metadata (defined in pyproject.toml)
 # This ensures a single source of truth for the version number
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
 except ImportError:
     # Fallback for Python < 3.8 (though we require 3.11+)
-    from importlib_metadata import version, PackageNotFoundError
+    from importlib_metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("python-magnetcooling")
@@ -45,28 +45,30 @@ except PackageNotFoundError:
     # This is expected during development before running `pip install -e .`
     __version__ = "0.0.0+unknown"
 
+from .channel import (
+    AxialDiscretization,
+    ChannelGeometry,
+    ChannelInput,
+    ChannelOutput,
+)
+from .correlations import HeatCorrelation, available_correlations
+from .friction import FrictionModel, available_friction_models
 from .thermohydraulics import (
     ThermalHydraulicCalculator,
     ThermalHydraulicInput,
     ThermalHydraulicOutput,
     compute_single_channel,
 )
-from .channel import (
-    ChannelGeometry,
-    ChannelInput,
-    ChannelOutput,
-    AxialDiscretization,
-)
+from .water_properties import WaterProperties
 from .waterflow import WaterFlow
 from .waterflow_factory import (
-    from_flow_params,
-    from_database_record,
-    from_fitted_data,
     create_default as create_default_waterflow,
 )
-from .correlations import HeatCorrelation, available_correlations
-from .friction import FrictionModel, available_friction_models
-from .water_properties import WaterProperties
+from .waterflow_factory import (
+    from_database_record,
+    from_fitted_data,
+    from_flow_params,
+)
 
 __all__ = [
     "__version__",

@@ -52,13 +52,15 @@ psi[0,:] = [ Power1*(xi+h)/(2*h) if abs(xi) <= h else 0 for xi in xc]
 """
 
 from __future__ import absolute_import
-import sys
-import os
+
 import math
+import os
+import sys
+
 import numpy as np
+import tabulate
 from clawpack import riemann
 
-import tabulate
 from . import heatexchanger_primary
 from . import water as w
 
@@ -531,26 +533,18 @@ def setplot(plotdata):
 
 
 if __name__ == "__main__":
-    from clawpack.pyclaw.util import run_app_from_main
-
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "input_file", help="input txt file (ex. M9_2019.02.14-23_00_38.txt)"
-    )
+    parser.add_argument("input_file", help="input txt file (ex. M9_2019.02.14-23_00_38.txt)")
     parser.add_argument(
         "--npts_per_domain", help="number of points per domain", type=int, default=10
     )
     parser.add_argument("--ntimes", help="number of time steps", type=int, default=20)
-    parser.add_argument(
-        "--duration", help="specify simu duration", type=float, default=30
-    )
+    parser.add_argument("--duration", help="specify simu duration", type=float, default=30)
     parser.add_argument("--iplot", help="activate plot", action="store_true")
     parser.add_argument("--debug", help="activate debug mode", action="store_true")
-    parser.add_argument(
-        "--nhelices", help="specify number of helices", type=int, default=14
-    )
+    parser.add_argument("--nhelices", help="specify number of helices", type=int, default=14)
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     # raw|filter|smooth post-traitement of data
     parser.add_argument(

@@ -3,15 +3,16 @@ Adapter to connect thermal_hydraulics.py with FeelPP workflow
 """
 
 from typing import Dict, Optional
+
 import pandas as pd
 
 from .thermohydraulics import (
+    AxialDiscretization,
+    ChannelGeometry,
+    ChannelInput,
     ThermalHydraulicCalculator,
     ThermalHydraulicInput,
     ThermalHydraulicOutput,
-    ChannelInput,
-    ChannelGeometry,
-    AxialDiscretization,
 )
 
 

@@ -7,9 +7,10 @@ water-cooled magnet thermal analysis.
 
 from dataclasses import dataclass
 from typing import List, Optional
+
 import numpy as np
 
-from .cooling import steam, Uw, getDT, getHeatCoeff
+from .cooling import Uw, getDT, getHeatCoeff, steam
 from .waterflow import WaterFlow
 
 
