@@ -11,19 +11,20 @@ This script demonstrates the full workflow:
 This is a simplified, standalone version of the compute() method from flow_params.py
 """
 
-import numpy as np
-from scipy import optimize
-import matplotlib.pyplot as plt
-from typing import Dict, Tuple, List, Callable
 import json
+import os
 
 # Import the factory module
 import sys
-import os
+from typing import Callable, Dict, List, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import optimize
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling.waterflow_factory import from_flow_params
 from python_magnetcooling import WaterFlow
+from python_magnetcooling.waterflow_factory import from_flow_params
 
 
 def generate_synthetic_data(

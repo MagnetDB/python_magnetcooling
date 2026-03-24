@@ -3,10 +3,10 @@ Example: Using thermohydraulics.py independently
 """
 
 from python_magnetcooling.thermohydraulics import (
+    ChannelGeometry,
+    ChannelInput,
     ThermalHydraulicCalculator,
     ThermalHydraulicInput,
-    ChannelInput,
-    ChannelGeometry,
     compute_single_channel,
 )
 from python_magnetcooling.waterflow import waterflow
@@ -29,7 +29,7 @@ print(f"  Outlet temperature: {result.temp_outlet:.2f} K")
 print(f"  Temperature rise: {result.temp_rise:.2f} K")
 print(f"  Heat coefficient: {result.heat_coeff:.1f} W/m²/K")
 print(f"  Velocity: {result.velocity:.2f} m/s")
-print(f"  Flow rate: {result.flow_rate*1000:.2f} l/s")
+print(f"  Flow rate: {result.flow_rate * 1000:.2f} l/s")
 
 # Example 2: Multiple channels with waterflow
 print("\n=== Multiple Channels with Waterflow ===")
@@ -69,12 +69,12 @@ calc = ThermalHydraulicCalculator(verbose=True)
 result = calc.compute_from_waterflow(inputs, flow_params, current=30000)
 
 print("\nGlobal Results:")
-print(f"  Total flow: {result.total_flow_rate*1000:.2f} l/s")
+print(f"  Total flow: {result.total_flow_rate * 1000:.2f} l/s")
 print(f"  Mixed outlet temp: {result.outlet_temp_mixed:.2f} K")
-print(f"  Total power: {result.total_power/1000:.1f} kW")
+print(f"  Total power: {result.total_power / 1000:.1f} kW")
 
 for i, ch in enumerate(result.channels):
-    print(f"\nChannel {i+1}:")
+    print(f"\nChannel {i + 1}:")
     print(f"  Outlet temp: {ch.temp_outlet:.2f} K")
     print(f"  Velocity: {ch.velocity:.2f} m/s")
     print(f"  Heat coeff: {ch.heat_coeff:.1f} W/m²/K")

@@ -12,24 +12,25 @@ This script demonstrates the full workflow using python_magnetrun methods:
 This is a standalone version of the compute() method from flow_params_magnetrun.py
 """
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from typing import Dict, Tuple, List
 import json
 import os
 import sys
+from typing import Dict, List, Tuple
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pwlf
 
 # Import python_magnetrun methods
-from python_magnetrun.processing.fit import fit, find_eqn
-from tabulate import tabulate
+from python_magnetrun.processing.fit import find_eqn, fit
 from sympy import Symbol
-import pwlf
+from tabulate import tabulate
 
 # Import the factory module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling.waterflow_factory import from_flow_params
 from python_magnetcooling import WaterFlow
+from python_magnetcooling.waterflow_factory import from_flow_params
 
 
 def generate_synthetic_data(
@@ -273,7 +274,7 @@ def pwlf_fit_pump_speed(
         if debug:
             for i, eqn in enumerate(best_eqns):
                 eqnHat = [float(eqn.evalf(subs={Symbol("x"): val})) for val in xHat]
-                plt.plot(xHat, eqnHat, ".", alpha=0.2, label=f"Segment {i+1}")
+                plt.plot(xHat, eqnHat, ".", alpha=0.2, label=f"Segment {i + 1}")
 
         if best_pwlf.n_segments == 2:
             plt.axvline(

@@ -7,24 +7,23 @@ as loaded by the compute() method in flow_params.py.
 """
 
 from python_magnetcooling.waterflow_factory import (
-    from_flow_params,
     from_database_record,
     from_fitted_data,
-    create_default,
+    from_flow_params,
 )
 
 
 def example_from_flow_params():
     """
     Example 1: Create WaterFlow from flow_params dictionary
-    
+
     This is the most common use case - the compute() method in flow_params.py
     generates a flow_params dictionary that can be directly used here.
     """
     print("=" * 70)
     print("Example 1: Creating WaterFlow from flow_params dictionary")
     print("=" * 70)
-    
+
     # This format matches the output from compute() in examples/flow_params.py
     flow_params = {
         "Vp0": {"value": 1000, "unit": "rpm"},
@@ -36,16 +35,16 @@ def example_from_flow_params():
         "BP": {"value": 4, "unit": "bar"},
         "Imax": {"value": 28000, "unit": "A"},
     }
-    
+
     # Create WaterFlow object from the flow_params
     flow = from_flow_params(flow_params)
-    
-    print(f"\nWaterFlow object created:")
+
+    print("\nWaterFlow object created:")
     print(f"  Pump speed range: {flow.pump_speed_min} - {flow.pump_speed_max} rpm")
     print(f"  Flow range: {flow.flow_min} - {flow.flow_max} l/s")
     print(f"  Pressure range: {flow.pressure_min} - {flow.pressure_max} bar")
     print(f"  Max current: {flow.current_max} A")
-    
+
     # Use the WaterFlow object to compute operating parameters
     current = 20000  # A
     print(f"\nAt operating current {current} A:")
@@ -59,13 +58,13 @@ def example_from_flow_params():
 def example_from_database_record():
     """
     Example 2: Create WaterFlow from database record with custom field mapping
-    
+
     This is useful when your database schema uses different field names.
     """
     print("=" * 70)
     print("Example 2: Creating WaterFlow from database record")
     print("=" * 70)
-    
+
     # Simulated database record with custom field names
     db_record = {
         "min_pump_rpm": 1000,
@@ -77,7 +76,7 @@ def example_from_database_record():
         "back_pressure": 4,
         "max_current": 28000,
     }
-    
+
     # Define mapping from database fields to flow parameter names
     key_mapping = {
         "Vp0": "min_pump_rpm",
@@ -89,11 +88,11 @@ def example_from_database_record():
         "BP": "back_pressure",
         "Imax": "max_current",
     }
-    
+
     # Create WaterFlow object with mapping
     flow = from_database_record(db_record, key_mapping)
-    
-    print(f"\nWaterFlow object created from database record")
+
+    print("\nWaterFlow object created from database record")
     print(f"  Max flow rate: {flow.flow_max} l/s")
     print(f"  Max current: {flow.current_max} A")
     print()
@@ -102,33 +101,27 @@ def example_from_database_record():
 def example_from_fitted_data():
     """
     Example 3: Create WaterFlow from fitted curve parameters
-    
+
     This matches what the compute() function does when fitting experimental data.
     """
     print("=" * 70)
     print("Example 3: Creating WaterFlow from fitted curve parameters")
     print("=" * 70)
-    
+
     # These parameters come from curve fitting:
     # Vp = Vpmax * (I/Imax)^2 + Vp0
     # F = F0 + Fmax * Vp/(Vpmax + Vp0)
     # P = Pmin + Pmax * (Vp/(Vpmax + Vp0))^2
-    
+
     pump_speed_fit = (2840, 1000)  # (Vpmax, Vp0) from fitting
-    flow_rate_fit = (0, 140)       # (F0, Fmax) from fitting
-    pressure_fit = (4, 22)         # (Pmin, Pmax) from fitting
+    flow_rate_fit = (0, 140)  # (F0, Fmax) from fitting
+    pressure_fit = (4, 22)  # (Pmin, Pmax) from fitting
     back_pressure = 4.0
     max_current = 28000
-    
-    flow = from_fitted_data(
-        pump_speed_fit,
-        flow_rate_fit,
-        pressure_fit,
-        back_pressure,
-        max_current
-    )
-    
-    print(f"\nWaterFlow object created from fitted parameters")
+
+    flow = from_fitted_data(pump_speed_fit, flow_rate_fit, pressure_fit, back_pressure, max_current)
+
+    print("\nWaterFlow object created from fitted parameters")
     print(f"  Fitted pump speed: Vp = {flow.pump_speed_max}*(I/Imax)^2 + {flow.pump_speed_min}")
     print(f"  Fitted flow range: {flow.flow_min} - {flow.flow_max} l/s")
     print(f"  Fitted pressure range: {flow.pressure_min} - {flow.pressure_max} bar")
@@ -138,13 +131,13 @@ def example_from_fitted_data():
 def example_using_in_compute():
     """
     Example 4: How to integrate into the compute() workflow
-    
+
     Shows how to modify the compute() function to use waterflow_factory.
     """
     print("=" * 70)
     print("Example 4: Integration with compute() workflow")
     print("=" * 70)
-    
+
     print("""
 In examples/flow_params.py, the compute() function can be modified to use
 the factory at the end:
@@ -171,14 +164,14 @@ the factory at the end:
 def example_load_from_saved_json():
     """
     Example 5: Load from saved JSON file (backward compatible)
-    
+
     The existing WaterFlow.from_file() method still works, but you can also
     load the JSON and use the factory.
     """
     print("=" * 70)
     print("Example 5: Loading from saved JSON file")
     print("=" * 70)
-    
+
     print("""
 If you have a saved flow_params JSON file from compute(), you can load it
 in two ways:
@@ -193,7 +186,7 @@ Method 2 - Using the factory (more flexible):
     
     with open("M9_M10-flow_params.json", "r") as f:
         params = json.load(f)
-    
+
     flow = from_flow_params(params)
     
 Both methods produce the same result!
@@ -209,13 +202,13 @@ def main():
     print("Extracting WaterFlow object creation from database records")
     print("*" * 70)
     print("\n")
-    
+
     example_from_flow_params()
     example_from_database_record()
     example_from_fitted_data()
     example_using_in_compute()
     example_load_from_saved_json()
-    
+
     print("=" * 70)
     print("Summary")
     print("=" * 70)

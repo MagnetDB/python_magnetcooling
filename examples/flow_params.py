@@ -2,27 +2,23 @@
 Extract flow params from records using a fit
 """
 
-
-import tempfile
+import datetime
+import json
 import os
 import re
-
-import numpy as np
-from scipy import optimize
+import tempfile
 from math import floor
 
-import datetime
-
-import json
+import numpy as np
 import pandas as pd
-from rich.progress import track
-from . import utils
 
 # from txt2csv import load_files
 from python_magnetrun.utils.files import concat_files
 from python_magnetrun.utils.plots import plot_files
-from python_magnetrun.magnetdata import MagnetData
-from python_magnetrun.processing.stats import nplateaus
+from rich.progress import track
+from scipy import optimize
+
+from . import utils
 
 
 def stats(
@@ -111,7 +107,9 @@ def fit(
     return params
 
 
-def compute(session, api_server: str, headers: dict, oid: int, samples: int=20, debug: bool = False):
+def compute(
+    session, api_server: str, headers: dict, oid: int, samples: int = 20, debug: bool = False
+):
     """
     compute flow_params for a given magnet
     """
@@ -302,9 +300,7 @@ def compute(session, api_server: str, headers: dict, oid: int, samples: int=20, 
                             )
                             _df["t"] = _df.apply(
                                 lambda row: (
-                                    datetime.datetime.strptime(
-                                        row.Date + " " + row.Time, tformat
-                                    )
+                                    datetime.datetime.strptime(row.Date + " " + row.Time, tformat)
                                     - t0
                                 ).total_seconds(),
                                 axis=1,
@@ -316,9 +312,7 @@ def compute(session, api_server: str, headers: dict, oid: int, samples: int=20, 
                         else:
                             _Rpmmax = _df[fit_data[housing]["Rpm"]].max()
                             threshold = _Rpmmax * (1 - 0.1 / 100.0)
-                            result = _df.query(
-                                f'{fit_data[housing]["Rpm"]} >= {threshold}'
-                            )
+                            result = _df.query(f"{fit_data[housing]['Rpm']} >= {threshold}")
                             if not result.empty:
                                 if (
                                     result[Ikey].std() >= 10
@@ -328,7 +322,7 @@ def compute(session, api_server: str, headers: dict, oid: int, samples: int=20, 
                                     if debug:
                                         _Istats = result[Ikey].describe(include="all")
                                         print(
-                                            f'Rpmmax={_Rpmmax}, thresold={threshold} {Ikey}: {_Istats}, Field: {result["Field"].max()}'
+                                            f"Rpmmax={_Rpmmax}, thresold={threshold} {Ikey}: {_Istats}, Field: {result['Field'].max()}"
                                         )
                                         """ """
                                         import matplotlib.pyplot as plt
