@@ -52,9 +52,9 @@ Usage
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Callable
 import logging
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 import numpy as np
 from scipy import optimize
@@ -617,7 +617,7 @@ def _compute_fit_statistics(
     # Calculate R² (coefficient of determination)
     ss_res = np.sum(residuals**2)
     ss_tot = np.sum((y_data - np.mean(y_data)) ** 2)
-    
+
     # Avoid division by zero
     if ss_tot == 0:
         r_squared = 1.0 if ss_res == 0 else 0.0
@@ -670,9 +670,9 @@ def _extract_piecewise_equations(pwlf_model) -> list:
     x = Symbol("x")
     n_segments = pwlf_model.n_segments
     degree = pwlf_model.degree
-    
+
     equations = []
-    
+
     # Extract coefficients for each segment
     # pwlf stores beta coefficients for each polynomial term
     for seg in range(n_segments):
@@ -684,9 +684,9 @@ def _extract_piecewise_equations(pwlf_model) -> list:
             if idx < len(pwlf_model.beta):
                 coeff = pwlf_model.beta[idx]
                 equation += coeff * (x ** deg)
-        
+
         equations.append(equation)
-    
+
     return equations
 
 
@@ -891,27 +891,27 @@ def fit_pump_speed_piecewise(
     # Try segments sequentially
     best_fit = None
     best_equations = None
-    
+
     for n_segments in range(1, max_segments + 1):
         logger.debug(f"Trying {n_segments} segment(s)...")
-        
+
         # Initialize pwlf model
         my_pwlf = pwlf.PiecewiseLinFit(current, pump_speed, degree=degree)
-        
+
         # Fit with or without breakpoint guess
         if breakpoint_guess is not None and n_segments == 2:
             logger.debug(f"Using breakpoint guess: {breakpoint_guess} A")
             my_pwlf.fit_guess([breakpoint_guess])
         else:
             my_pwlf.fit(n_segments)
-        
+
         # Extract symbolic equations
         try:
             equations = _extract_piecewise_equations(my_pwlf)
         except ImportError:
             logger.warning("sympy not available, skipping equation extraction")
             equations = None
-        
+
         # Check fit quality at the final point
         if equations is not None:
             from sympy import Symbol
@@ -920,11 +920,11 @@ def fit_pump_speed_piecewise(
             final_speed = pump_speed[-1]
             predicted_speed = float(equations[0].evalf(subs={x: final_current}))
             error = abs(predicted_speed - final_speed)
-            
+
             logger.debug(
                 f"Fit quality check: error at I={final_current:.0f} A is {error:.1f} rpm"
             )
-            
+
             # If error is acceptable or this is the last attempt, use this fit
             if error <= 10 or n_segments == max_segments:
                 best_fit = my_pwlf
@@ -935,14 +935,14 @@ def fit_pump_speed_piecewise(
             best_fit = my_pwlf
             best_equations = None
             break
-    
+
     if best_fit is None:
         raise RuntimeError("Piecewise fitting failed for all segment configurations")
-    
+
     # Extract parameters
     n_segments = best_fit.n_segments
     breakpoints_list = list(best_fit.fit_breaks)
-    
+
     # Determine Imax
     if n_segments == 2:
         # Breakpoint between segments is the detected Imax
@@ -954,7 +954,7 @@ def fit_pump_speed_piecewise(
         detected_imax = float(current.max())
         imax_detected = False
         logger.info(f"Using data maximum as Imax: {detected_imax:.0f} A")
-    
+
     # Evaluate Vp0 and Vpmax from the equation
     if best_equations is not None:
         from sympy import Symbol
@@ -965,13 +965,13 @@ def fit_pump_speed_piecewise(
         # Fallback: evaluate using pwlf predict
         vp0 = float(best_fit.predict(0))
         vpmax = float(best_fit.predict(detected_imax))
-    
+
     logger.info(
         f"Pump speed fit complete (piecewise): Vpmax={vpmax:.2f} rpm, "
         f"Vp0={vp0:.2f} rpm, Imax={detected_imax:.0f} A (detected={imax_detected}), "
         f"segments={n_segments}"
     )
-    
+
     return PumpSpeedFit(
         vpmax=vpmax,
         vp0=vp0,
@@ -2207,10 +2207,10 @@ def plot_pump_fit(
 
     # Raw data
     ax.plot(current, pump_speed, 'b.', markersize=5, alpha=0.5, label='Measured data')
-    
+
     # Fitted curve
     ax.plot(i_range, vp_fit, 'r-', linewidth=2, label='Fitted model')
-    
+
     # Mark Imax if available
     if pump_fit.imax:
         ax.axvline(x=pump_fit.imax, color='g', linestyle='--', alpha=0.7,
@@ -2297,12 +2297,12 @@ def plot_flow_pressure_fit(
     # Generate fitted curves
     i_range = np.linspace(current.min(), current.max(), 200)
     vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
-    
+
     # Flow: F(I) = F0 + Fmax * Vp(I)/(Vpmax + Vp0)
     flow_fit = flow_pressure_fit.f0 + flow_pressure_fit.fmax * vp_fit / (
         pump_fit.vpmax + pump_fit.vp0
     )
-    
+
     # Pressure: P(I) = Pmin + Pmax * [Vp(I)/(Vpmax + Vp0)]^2
     pressure_fit = flow_pressure_fit.pmin + flow_pressure_fit.pmax * (
         vp_fit / (pump_fit.vpmax + pump_fit.vp0)
@@ -2405,6 +2405,7 @@ def plot_hysteresis_fit(
     """
     try:
         import matplotlib.pyplot as plt
+
         from .hysteresis import plot_hysteresis_fit as _plot_hyst
     except ImportError:
         logger.warning("matplotlib not available. Cannot create plot.")

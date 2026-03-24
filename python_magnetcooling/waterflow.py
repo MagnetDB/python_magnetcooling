@@ -8,12 +8,12 @@ This module handles:
 - Velocity calculations based on operating conditions
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, List
 import json
-import numpy as np
+from dataclasses import dataclass, field
+from typing import List
 from warnings import simplefilter
 
+import numpy as np
 from pint import Quantity, UnitRegistry
 
 # Ignore pint warnings
@@ -76,7 +76,7 @@ class WaterFlow:
     hysteresis_thresholds: List[tuple] = field(default_factory=list)  # [(asc, desc), ...] in MW
     hysteresis_low_values: List[float] = field(default_factory=list)  # m³/h
     hysteresis_high_values: List[float] = field(default_factory=list)  # m³/h
-    
+
     @classmethod
     def from_file(cls, filename: str) -> "WaterFlow":
         """
@@ -102,12 +102,12 @@ class WaterFlow:
         """
         with open(filename, "r") as f:
             params = json.load(f)
-        
+
         # Load hysteresis parameters if present
         hysteresis_thresholds = []
         hysteresis_low_values = []
         hysteresis_high_values = []
-        
+
         if "hysteresis" in params:
             hyst = params["hysteresis"]
             # Convert thresholds to list of tuples if they're lists
@@ -118,7 +118,7 @@ class WaterFlow:
                 hysteresis_thresholds = thresholds_raw
             hysteresis_low_values = hyst.get("low_values", [])
             hysteresis_high_values = hyst.get("high_values", [])
-        
+
         return cls(
             pump_speed_min=params["Vp0"]["value"],
             pump_speed_max=params["Vpmax"]["value"],
@@ -220,7 +220,7 @@ class WaterFlow:
             raise ValueError("Cross-section must be positive")
 
         return self.flow_rate(current) / cross_section
-    
+
     def debitbrut(self, power: float) -> float:
         """
         Compute secondary cooling loop flow rate as function of power using hysteresis model.
@@ -264,22 +264,22 @@ class WaterFlow:
                 "Set hysteresis_thresholds (as list of (asc, desc) tuples), "
                 "hysteresis_low_values, and hysteresis_high_values before calling debitbrut()."
             )
-        
+
         if len(self.hysteresis_low_values) != len(self.hysteresis_thresholds):
             raise ValueError(
                 f"hysteresis_low_values must have {len(self.hysteresis_thresholds)} "
                 f"elements (same as number of thresholds), got {len(self.hysteresis_low_values)}"
             )
-        
+
         if len(self.hysteresis_high_values) != len(self.hysteresis_thresholds):
             raise ValueError(
                 f"hysteresis_high_values must have {len(self.hysteresis_thresholds)} "
                 f"elements (same as number of thresholds), got {len(self.hysteresis_high_values)}"
             )
-        
+
         # Convert scalar to array for processing
         power_array = np.atleast_1d(power)
-        
+
         # Apply hysteresis model
         flow_rates = _multi_level_hysteresis(
             power_array,
@@ -287,12 +287,12 @@ class WaterFlow:
             self.hysteresis_low_values,
             self.hysteresis_high_values
         )
-        
+
         # Return scalar if input was scalar
         if np.isscalar(power):
             return float(flow_rates[0])
         return flow_rates
-    
+
     def to_dict(self) -> dict:
         """Export parameters as dictionary"""
         result = {
@@ -305,7 +305,7 @@ class WaterFlow:
             "BP": {"value": self.pressure_back, "unit": "bar"},
             "Imax": {"value": self.current_max, "unit": "A"},
         }
-        
+
         # Add hysteresis parameters if configured
         if self.hysteresis_thresholds:
             result["hysteresis"] = {
@@ -315,9 +315,9 @@ class WaterFlow:
                 "unit_thresholds": "MW",
                 "unit_values": "m³/h"
             }
-        
+
         return result
-    
+
     def to_file(self, filename: str) -> None:
         """Save parameters to JSON file"""
         with open(filename, "w") as f:

@@ -218,7 +218,7 @@ class GnielinskiCorrelation(HeatCorrelation):
     
     More accurate than Dittus-Boelter, especially near transition region.
     """
-    
+
     def compute(
         self,
         temperature: float,
@@ -228,37 +228,37 @@ class GnielinskiCorrelation(HeatCorrelation):
         length: float
     ) -> float:
         """Compute heat transfer coefficient using Gnielinski correlation"""
-        
+
         state = WaterProperties.get_state(temperature, pressure)
         reynolds = WaterProperties.compute_reynolds(
             velocity, hydraulic_diameter, temperature, pressure
         )
-        
+
         if reynolds < 3000:
             raise CorrelationError(
                 f"Gnielinski not valid for Re={reynolds:.0f} < 3000 (use laminar correlation)"
             )
-        
+
         if reynolds > 5e6:
             raise CorrelationError(
                 f"Gnielinski not recommended for Re={reynolds:.0f} > 5×10^6"
             )
-        
+
         prandtl = state.prandtl
-        
+
         if prandtl < 0.5 or prandtl > 2000:
             raise CorrelationError(
                 f"Gnielinski not valid for Pr={prandtl:.2f} outside range [0.5, 2000]"
             )
-        
+
         # Petukhov friction factor for smooth pipes
         f = (0.79 * log(reynolds) - 1.64) ** (-2)
-        
+
         # Gnielinski Nusselt number
         numerator = (f / 8.0) * (reynolds - 1000) * prandtl
         denominator = 1.0 + 12.7 * (f / 8.0) ** 0.5 * (prandtl ** (2.0/3.0) - 1.0)
         nusselt = numerator / denominator
-        
+
         h = self.fuzzy_factor * nusselt * state.thermal_conductivity / hydraulic_diameter
 
         return h

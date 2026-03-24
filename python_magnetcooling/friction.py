@@ -179,7 +179,7 @@ class RoughPipeFriction(FrictionModel):
     
     Valid for rough pipes with surface roughness.
     """
-    
+
     def __init__(self, roughness: float = 2.5e-5, **kwargs):
         """
         Initialize rough pipe friction model
@@ -189,7 +189,7 @@ class RoughPipeFriction(FrictionModel):
             **kwargs: Additional arguments for base class
         """
         super().__init__(roughness=roughness, **kwargs)
-    
+
     def compute(
         self,
         reynolds: float,
@@ -197,30 +197,30 @@ class RoughPipeFriction(FrictionModel):
         friction_guess: float = 0.055
     ) -> float:
         """Compute friction factor for rough pipes (iterative)"""
-        
+
         if reynolds < 2300:
             return 64.0 / reynolds
-        
+
         eps = self.roughness
-        
+
         # Iterative solution
         f = friction_guess
         max_iter = 20
         tolerance = 1e-6
-        
+
         for i in range(max_iter):
             # Roughness Reynolds number
             rstar = (reynolds * sqrt(f) / sqrt(8.0)) * eps / hydraulic_diameter
-            
+
             # Rough pipe correlation
             f_new = (-2.0 * log10(2.51 / (reynolds * sqrt(f)) * (1.0 + rstar / 3.3))) ** (-2)
-            
+
             error = abs(f_new - f) / f
             f = f_new
-            
+
             if error < tolerance:
                 return f
-        
+
         raise FrictionError(
             f"Rough pipe iteration did not converge after {max_iter} iterations"
         )
@@ -235,7 +235,7 @@ class KarmanFriction(FrictionModel):
     Solved iteratively. More accurate than Blasius for high Reynolds numbers.
     Valid for: Re > 10⁴
     """
-    
+
     def compute(
         self,
         reynolds: float,
@@ -243,24 +243,24 @@ class KarmanFriction(FrictionModel):
         friction_guess: float = 0.055
     ) -> float:
         """Compute friction factor using Karman-Nikuradse (iterative)"""
-        
+
         if reynolds < 2300:
             return 64.0 / reynolds
-        
+
         # Iterative solution
         f = friction_guess
         max_iter = 20
         tolerance = 1e-6
-        
+
         for i in range(max_iter):
             f_new = (1.93 * log10(reynolds * sqrt(f)) - 0.537) ** (-2)
-            
+
             error = abs(f_new - f) / f
             f = f_new
-            
+
             if error < tolerance:
                 return f
-        
+
         raise FrictionError(
             f"Karman iteration did not converge after {max_iter} iterations"
         )
