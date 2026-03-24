@@ -33,11 +33,11 @@ done
 shift $((OPTIND - 1))
 
 # add parameters
-: ${VERSION:="0.1.0"}
-: ${DIST:="trixie"}
+: "${VERSION:="0.1.0"}"
+: "${DIST:="trixie"}"
 
 # cleanup source
-find . -type d -name __pycache__ | xargs rm -rf
+find . -type d -name __pycache__ -print0 | xargs rm -rf
 
 # create archive
 
@@ -65,22 +65,22 @@ tar \
     --exclude=poetry.lock \
     --exclude=htmlcov \
     --exclude=.git \
-    -zcvf ${PACKAGE}_${VERSION}.orig.tar.gz ${SRCDIR}
+    -zcvf "${PACKAGE}_${VERSION}".orig.tar.gz "${SRCDIR}"
 
 # build package
 # disable use of hooks in pbuilder
 mkdir -p tmp
 cd tmp
-cp ../${PACKAGE}_${VERSION}.orig.tar.gz .
-tar zxf ./${PACKAGE}_$VERSION.orig.tar.gz
-cp -r ../${SRCDIR}/debian ${SRCDIR}
-cd ${SRCDIR}
+cp ../"${PACKAGE}_${VERSION}".orig.tar.gz .
+tar zxf ./"${PACKAGE}_${VERSION}".orig.tar.gz
+cp -r ../"${SRCDIR}"/debian "${SRCDIR}"
+cd "${SRCDIR}"
 DIST=${DIST} pdebuild
 
 # clean up
 cd ..
-rm -rf ${PACKAGE}*
-rm -rf ${SRCDIR}
+rm -rf "${PACKAGE}"*
+rm -rf "${SRCDIR}"
 
 # # upload new package to Lncmi package repository
 # cd /var/cache/pbuilder/$DIST-amd64/results
