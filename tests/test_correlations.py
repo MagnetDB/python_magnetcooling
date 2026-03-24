@@ -1,11 +1,9 @@
 """Tests for heat transfer correlations"""
 
-import pytest
 from python_magnetcooling.correlations import (
     HeatCorrelation,
     MontgomeryCorrelation,
 )
-from python_magnetcooling.exceptions import CorrelationError
 
 
 class TestHeatCorrelation:

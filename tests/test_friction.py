@@ -1,10 +1,8 @@
 """Tests for friction factor models"""
 
-import pytest
 from python_magnetcooling.friction import (
-    FrictionModel,
-    ConstantFriction,
     BlasiusFriction,
+    ConstantFriction,
 )
 
 
