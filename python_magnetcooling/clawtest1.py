@@ -12,6 +12,11 @@ Solve the linear advection equation:
 
 Here q is the water temperature and u is the velocity.
 
+**Variable naming convention:**
+- teb: Secondary cooling loop inlet temperature (prefer temp_secondary_in in new CSV)
+- tsb: Secondary cooling loop outlet temperature (prefer temp_secondary_out in new CSV)
+- debitbrut: Secondary cooling loop flow rate (prefer flow_secondary in new CSV)
+
 The initial condition is given from an actual experiment.
 The boundary conditions are computed at the entry and exit of the
 heat exchanger.

@@ -6,13 +6,7 @@ This directory contains the test suite for the python_magnetcooling package.
 
 ## Setup
 
-Before running tests, ensure you have installed the package with development dependencies:
-
-```bash
-pip install -e ".[dev]"
-```
-
-This will install all required dependencies including `iapws`, `numpy`, `scipy`, `pytest`, and `pytest-cov`.
+Before running tests, ensure you have installed the package with development dependencies.
 
 ## Running Tests
 

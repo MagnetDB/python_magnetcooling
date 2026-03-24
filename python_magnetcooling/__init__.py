@@ -59,16 +59,36 @@ from .thermohydraulics import (
     ThermalHydraulicOutput,
     compute_single_channel,
 )
-from .water_properties import WaterProperties
+from .channel import (
+    ChannelGeometry,
+    ChannelInput,
+    ChannelOutput,
+    AxialDiscretization,
+    CoolingLevel,
+)
 from .waterflow import WaterFlow
 from .waterflow_factory import (
-    create_default as create_default_waterflow,
-)
-from .waterflow_factory import (
+    from_flow_params,
     from_database_record,
     from_fitted_data,
-    from_flow_params,
+    from_fits,
+    create_default as create_default_waterflow,
 )
+from .fitting import (
+    FitResult,
+    PumpSpeedFit,
+    FlowPressureFit,
+    fit_pump_speed_simple,
+    fit_pump_speed_piecewise,
+    fit_flow_rate,
+    fit_pressure,
+    compute_back_pressure_stats,
+    fit_hydraulic_system,
+    build_waterflow,
+)
+from .correlations import HeatCorrelation, available_correlations
+from .friction import FrictionModel, available_friction_models
+from .water_properties import WaterProperties, get_rho, get_cp
 
 __all__ = [
     "__version__",
@@ -82,6 +102,7 @@ __all__ = [
     "ChannelInput",
     "ChannelOutput",
     "AxialDiscretization",
+    "CoolingLevel",
     # Components
     "WaterFlow",
     "WaterProperties",
@@ -91,8 +112,21 @@ __all__ = [
     "from_flow_params",
     "from_database_record",
     "from_fitted_data",
+    "from_fits",
     "create_default_waterflow",
+    # Fitting module
+    "FitResult",
+    "PumpSpeedFit",
+    "FlowPressureFit",
+    "fit_pump_speed_simple",
+    "fit_pump_speed_piecewise",
+    "fit_flow_rate",
+    "fit_pressure",
+    "compute_back_pressure_stats",
+    "fit_hydraulic_system",
+    "build_waterflow",
     # Utilities
     "available_correlations",
     "available_friction_models",
 ]
+

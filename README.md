@@ -59,15 +59,18 @@ For documentation:
 pip install -e ".[docs]"
 ```
 
-For visualization:
+For visualization (plotting utilities):
 ```bash
 pip install -e ".[viz]"
+# Or manually: pip install matplotlib
 ```
 
 For Clawpack PDE solvers (required for `clawtest1.py`):
 ```bash
 pip install -e ".[clawpack]"
 ```
+
+**Note:** Plotting functions in `fitting` and `hysteresis` modules require `matplotlib`. If not installed, plotting functions will display a warning and return gracefully.
 
 ## Quick Start
 
@@ -131,10 +134,11 @@ calculator = ThermalHydraulicCalculator(
 )
 result = calculator.solve_channel(channel_input)
 
-# Access axial temperature distribution
-for i, temp in enumerate(result.temp_distribution):
-    z = discretization.z_positions[i]
-    print(f"z = {z:.2f} m: T = {temp:.2f} K")
+# Access per-section dTw (feelpp reconstructs Tw as T_in + cumsum(dTw))
+T_in = result.temp_inlet
+for i, dTw in enumerate(result.temp_rise_distribution):
+    T_section = T_in + sum(result.temp_rise_distribution[:i])
+    print(f"section {i}: dTw = {dTw:.4f} K, T_start = {T_section:.2f} K")
 ```
 
 ## Main Modules
@@ -174,8 +178,49 @@ Friction factor models for pressure drop calculations.
 - Colebrook-White equation
 - Smooth and rough pipe models
 
+### `fitting`
+Hydraulic system curve fitting for pump speed, flow rate, and pressure relationships.
+
+**Key Features:**
+- Pump speed vs current fitting (quadratic and piecewise linear methods)
+- Flow rate and pressure curve fitting
+- Hysteresis parameter estimation for flow control systems
+- Fit quality metrics (RMSE, MAE, R², MAPE) for model evaluation
+- Integration with experimental data from magnet runs
+- Plotting utilities for visualization
+
+**Main Functions:**
+- `fit_hydraulic_system()`: Comprehensive system fitting
+- `fit_hysteresis_parameters()`: Fit multi-level hysteresis models
+- `compute_pump_fit_metrics()`, `compute_flow_fit_metrics()`, `compute_pressure_fit_metrics()`: Evaluate fit quality
+- `compute_all_hydraulic_metrics()`: Get all metrics at once
+- `compute_hysteresis_fit_metrics()`: Hysteresis model quality metrics
+- `plot_pump_fit()`, `plot_flow_pressure_fit()`, `plot_hysteresis_fit()`: Visualization tools
+
+### `hysteresis`
+Multi-level hysteresis models for flow control systems with history-dependent behavior.
+
+**Key Features:**
+- Multi-level hysteresis with separate ascending/descending thresholds
+- Parameter estimation from time-series data
+- Data cleaning and outlier removal utilities
+- Fit quality metrics for model evaluation
+- Visualization tools for hysteresis loops and fits
+
+**Main Functions:**
+- `multi_level_hysteresis()`: Apply hysteresis model to input signal
+- `estimate_hysteresis_parameters()`: Estimate parameters from data
+- `compute_hysteresis_fit_metrics()`: Evaluate model quality with RMSE, R², match rate
+- `remove_outliers()`, `remove_low_x_outliers()`: Data cleaning
+- `plot_hysteresis_model()`, `plot_hysteresis_fit()`: Visualization
+
 ### `waterflow`
 Pump characteristics and flow rate calculations for cooling loops.
+
+**Key Features:**
+- Pump speed, flow rate, and pressure calculations as functions of current
+- Support for hysteresis models for secondary cooling loop flow (`debitbrut()` method)
+- JSON serialization for configuration management
 
 ### `heatexchanger_primary`
 Analysis of primary cooling loop heat exchangers with temperature field calculations.
@@ -191,10 +236,16 @@ The `examples/` directory contains practical applications:
 
 - **`heatexchanger_primary.py`**: Complete heat exchanger analysis with temperature profiles and visualization
 - **`feelpp.py`**: Integration with Feel++ finite element simulations
+- **`plotting_example.py`**: Demonstrates plotting utilities for hydraulic fits and hysteresis models
+- **`fit_metrics_example.py`**: Shows how to evaluate fit quality and decide when to refit models
+- **`waterflow_debitbrut_example.py`**: Usage examples for secondary cooling loop flow rate calculation with hysteresis
+- **`hysteresis_demo.py`**: Comprehensive hysteresis model demonstrations and parameter estimation
 
 To run an example:
 ```bash
 python examples/heatexchanger_primary.py <input_file> --nhelices 14
+python examples/fit_metrics_example.py  # Evaluate fit quality metrics
+python examples/plotting_example.py  # Creates visualization plots
 ```
 
 ## Physical Background
@@ -216,32 +267,12 @@ The correlations and models have been validated against experimental data from r
 ⚠️ **Important:** Before running tests, install the package with development dependencies:
 
 ```bash
-pip install -e ".[dev]"
-```
-
-Then run the test suite:
-
-```bash
-pytest
-```
-
-With coverage:
-```bash
-pytest --cov=python_magnetcooling --cov-report=html
-```
-
-View the coverage report:
-```bash
-# Linux
-xdg-open htmlcov/index.html
-
-# macOS
-open htmlcov/index.html
+pytest [--cov=python_magnetcooling --cov-report=html]
 ```
 
 For detailed testing instructions, see [TESTING.md](TESTING.md).
 
-### Test Suite Overview
+#### Test Suite Overview
 
 The test suite includes comprehensive tests for:
 
