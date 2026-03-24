@@ -59,7 +59,12 @@ tar \
     --exclude=*.orig \
     --exclude=*~ \
     --exclude=#*# \
+    --exclude=venv \
+    --exclude=python_magnetcooling.egg-info \
+    --exclude=.pytest_cache \
     --exclude=poetry.lock \
+    --exclude=htmlcov \
+    --exclude=.git \
     -zcvf ${PACKAGE}_${VERSION}.orig.tar.gz ${SRCDIR}
 
 # build package
