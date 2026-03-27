@@ -35,10 +35,9 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
-    "black>=25.1.0",
+    "ruff>=0.4.0",
     "mypy>=1.8.0",
-    "flake8>=7.0.0",
-    "pandas-stubs",
+    "pandas-stubs>=2.2.3",
 ]
 docs = [
     "sphinx>=7.0.0",
@@ -69,9 +68,15 @@ packages = ["python_magnetcooling"]
 testpaths = ["tests"]
 addopts = "--cov=python_magnetcooling --cov-report=html --cov-report=term"
 
-[tool.black]
+[tool.ruff]
 line-length = 100
-target-version = ['py311']
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [tool.mypy]
 python_version = "3.11"

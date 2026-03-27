@@ -2,23 +2,20 @@
 Extract flow params from records using a fit
 """
 
+import json
 import logging
 import os
-
-import json
-import pandas as pd
-import numpy as np
-
-logger = logging.getLogger(__name__)
-
-import matplotlib.pyplot as plt
-from tabulate import tabulate
-from sympy import Symbol
-
-from python_magnetrun.processing.fit import fit, find_eqn
-from python_magnetrun.utils.plots import plot_df
 from typing import List
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from python_magnetrun.processing.fit import find_eqn, fit
+from python_magnetrun.utils.plots import plot_df
+from sympy import Symbol
+from tabulate import tabulate
+
+logger = logging.getLogger(__name__)
 
 def setup():
     # default value
@@ -187,9 +184,7 @@ def compute(
     x = _df[Ikey].to_numpy()
     y = _df[RpmKey].to_numpy()
     for segment in [1, 2]:
-        my_pwlf, eqns = pwlf_fit(
-            Ikey, x, RpmKey, y, degree=2, segment=segment, show=True
-        )
+        my_pwlf, eqns = pwlf_fit(Ikey, x, RpmKey, y, degree=2, segment=segment, show=True)
         # TODO if error ?my_pwlf.standard_errors()? on brkpoints is big, try with 1 segment
         final_y = eqns[0].evalf(subs={Symbol("x"): x[-1]})
         if abs(final_y - y[-1]) <= 10:
@@ -201,12 +196,8 @@ def compute(
         print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
         Imax = my_pwlf.fit_breaks[1]
 
-    print(
-        f'new Vp0={flow_params["Vp0"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): 0})}'
-    )
-    print(
-        f'new Vpmax={flow_params["Vpmax"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): Imax})}'
-    )
+    print(f"new Vp0={flow_params['Vp0']['value']} -> {eqns[0].evalf(subs={Symbol('x'): 0})}")
+    print(f"new Vpmax={flow_params['Vpmax']['value']} -> {eqns[0].evalf(subs={Symbol('x'): Imax})}")
     params = [
         float(eqns[0].evalf(subs={Symbol("x"): Imax})),
         float(eqns[0].evalf(subs={Symbol("x"): 0})),
@@ -311,7 +302,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     # is it enough to get Pmagnet.max to have an idea of segments???
     # or try more advanded features: see find the best number of line segments
     # see https://jekel.me/piecewise_linear_fit_py/examples.html#fit-constants-or-polynomials
-    print(f'Pmagnet max: {df["Pmagnet"].max()}')
+    print(f"Pmagnet max: {df['Pmagnet'].max()}")
     # Pmagnet > 15 MW: 7
     # Pmagnet > 10 MW: 5
     # Pmagnet > MW: 3
@@ -326,10 +317,10 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
 
     # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "flow_secondary", args.window, threshold_dict["flow_secondary"], overview_dict[ofile]["sources"]["pupitre"], show=True)
 
-    from .processing.hysteresis import (
+    from python_magnetcooling.hysteresis import (
+        estimate_hysteresis_parameters,
         multi_level_hysteresis,
         remove_low_x_outliers,
-        estimate_hysteresis_parameters,
     )
 
     # Automatically detect bottom 25% of x, remove outliers there
@@ -381,7 +372,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     my_ax.plot(xdf["t"].to_numpy(), y_model, marker="*", alpha=0.2)
     plt.legend(legends)
     plt.grid()
-    plt.title(f"Secondary Flow(Pmagnet) model")
+    plt.title("Secondary Flow(Pmagnet) model")
     plt.xlabel("t[s]")
     plt.ylabel(f"{symbol} [{yunit:~P}]")
     plt.show()

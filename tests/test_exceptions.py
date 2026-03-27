@@ -1,15 +1,16 @@
 """Tests for custom exceptions"""
 
 import pytest
+
 from python_magnetcooling.exceptions import (
-    MagnetCoolingError,
-    WaterPropertiesError,
+    ConvergenceError,
     CorrelationError,
     FrictionError,
-    ValidationError,
-    ConvergenceError,
     HeatExchangerError,
     InvalidNTUError,
+    MagnetCoolingError,
+    ValidationError,
+    WaterPropertiesError,
 )
 
 

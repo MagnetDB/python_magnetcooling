@@ -22,20 +22,18 @@ import numpy as np
 
 # Public dataclasses live in channel.py (single source of truth).
 from .channel import (
-    AxialDiscretization,
     ChannelGeometry,
     ChannelInput,
     ChannelOutput,
     CoolingLevel,
 )
+
+# getDT is a thin calorimetric helper; keep the import rather than inlining.
+from .cooling import getDT
 from .correlations import HeatCorrelation, get_correlation
 from .friction import FrictionModel, get_friction_model
 from .water_properties import WaterProperties, WaterState
 from .waterflow import WaterFlow
-
-# getDT is a thin calorimetric helper; keep the import rather than inlining.
-from .cooling import getDT
-
 
 # ---------------------------------------------------------------------------
 # Input / Output structures

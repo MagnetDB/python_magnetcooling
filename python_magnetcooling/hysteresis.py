@@ -11,10 +11,11 @@ response thresholds depending on whether the input is increasing or decreasing,
 e.g., water flow rates that respond differently to rising vs falling magnet power.
 """
 
-from typing import Dict, List, Tuple, Optional
+import logging
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ def multi_level_hysteresis(
 
         if active_level >= 0:
             # Already in a high state - check for level changes
-            
+
             # Check for upward transitions to higher levels
             for j in range(active_level + 1, len(thresholds)):
                 if current_value > ascending_thresholds[j]:
@@ -398,11 +399,11 @@ def remove_low_x_outliers(
     ... )
     """
     df_clean = df.copy()
-    
+
     # Handle empty dataframe
     if len(df_clean) == 0:
         return df_clean
-    
+
     x = df_clean[x_col].values
     y = df_clean[y_col].values
 
@@ -829,7 +830,7 @@ def plot_hysteresis_model(
 
     # Plot 2: Output with hysteresis
     ax2.plot(range(len(y)), y, 'r-', linewidth=1.5, label='Output (with hysteresis)')
-    
+
     # Draw threshold levels as horizontal lines
     for i, (asc_thresh, desc_thresh) in enumerate(thresholds):
         # Mark high value for this level
@@ -839,7 +840,7 @@ def plot_hysteresis_model(
         if i == 0:
             ax2.axhline(y=low_values[i], color='orange', linestyle='--', alpha=0.5,
                        linewidth=1, label='Level low')
-    
+
     ax2.set_xlabel('Sample Index', fontsize=11)
     ax2.set_ylabel(ylabel, fontsize=11)
     ax2.grid(True, alpha=0.3)
@@ -944,15 +945,15 @@ def plot_hysteresis_fit(
     # Plot 2: X-Y scatter with fitted curve
     ax2.plot(x, y, 'b.', markersize=3, alpha=0.3, label='Raw data')
     ax2.plot(x, y_fit, 'r-', linewidth=2, label='Fitted model')
-    
+
     # Mark thresholds
     y_min, y_max = ax2.get_ylim()
     for i, (asc_thresh, desc_thresh) in enumerate(thresholds):
         ax2.axvline(x=asc_thresh, color='g', linestyle='--', alpha=0.6,
-                   linewidth=1.5, label=f'Ascending thresholds' if i == 0 else '')
+                   linewidth=1.5, label='Ascending thresholds' if i == 0 else '')
         ax2.axvline(x=desc_thresh, color='orange', linestyle='--', alpha=0.6,
-                   linewidth=1.5, label=f'Descending thresholds' if i == 0 else '')
-    
+                   linewidth=1.5, label='Descending thresholds' if i == 0 else '')
+
     ax2.set_xlabel(xlabel, fontsize=11)
     ax2.set_ylabel(ylabel, fontsize=11)
     ax2.legend(fontsize=9)

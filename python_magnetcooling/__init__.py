@@ -33,10 +33,10 @@ __email__ = "christophe.trophime@lncmi.cnrs.fr"
 # Version is read from package metadata (defined in pyproject.toml)
 # This ensures a single source of truth for the version number
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
 except ImportError:
     # Fallback for Python < 3.8 (though we require 3.11+)
-    from importlib_metadata import version, PackageNotFoundError
+    from importlib_metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("python-magnetcooling")
@@ -45,42 +45,44 @@ except PackageNotFoundError:
     # This is expected during development before running `pip install -e .`
     __version__ = "0.0.0+unknown"
 
+from .channel import (
+    AxialDiscretization,
+    ChannelGeometry,
+    ChannelInput,
+    ChannelOutput,
+    CoolingLevel,
+)
+from .correlations import HeatCorrelation, available_correlations
+from .fitting import (
+    FitResult,
+    FlowPressureFit,
+    PumpSpeedFit,
+    build_waterflow,
+    compute_back_pressure_stats,
+    fit_flow_rate,
+    fit_hydraulic_system,
+    fit_pressure,
+    fit_pump_speed_piecewise,
+    fit_pump_speed_simple,
+)
+from .friction import FrictionModel, available_friction_models
 from .thermohydraulics import (
     ThermalHydraulicCalculator,
     ThermalHydraulicInput,
     ThermalHydraulicOutput,
     compute_single_channel,
 )
-from .channel import (
-    ChannelGeometry,
-    ChannelInput,
-    ChannelOutput,
-    AxialDiscretization,
-    CoolingLevel,
-)
+from .water_properties import WaterProperties, get_cp, get_rho
 from .waterflow import WaterFlow
 from .waterflow_factory import (
-    from_flow_params,
-    from_database_record,
-    from_fitted_data,
-    from_fits,
     create_default as create_default_waterflow,
 )
-from .fitting import (
-    FitResult,
-    PumpSpeedFit,
-    FlowPressureFit,
-    fit_pump_speed_simple,
-    fit_pump_speed_piecewise,
-    fit_flow_rate,
-    fit_pressure,
-    compute_back_pressure_stats,
-    fit_hydraulic_system,
-    build_waterflow,
+from .waterflow_factory import (
+    from_database_record,
+    from_fits,
+    from_fitted_data,
+    from_flow_params,
 )
-from .correlations import HeatCorrelation, available_correlations
-from .friction import FrictionModel, available_friction_models
-from .water_properties import WaterProperties, get_rho, get_cp
 
 __all__ = [
     "__version__",

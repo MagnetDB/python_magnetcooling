@@ -4,31 +4,30 @@ from __future__ import unicode_literals
 
 import os
 import sys
-from python_magnetrun.MagnetRun import MagnetRun
 
 import matplotlib
+from python_magnetrun.MagnetRun import MagnetRun
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
 import pandas as pd
-
-from python_magnetrun.processing import smoothers as smoothtools
 from python_magnetrun.processing import filters as filtertools
+from python_magnetrun.processing import smoothers as smoothtools
+
+from python_magnetcooling.heat_exchanger_config import HeatExchangerConfig
 
 # Import from python_magnetcooling module
 from python_magnetcooling.heatexchanger_primary import (
     calculate_extended_temperature_fields,
     calculate_heat_transfer_coefficients,
-    plot_temperature_comparison,
-    plot_mixed_temperatures,
-    plot_heat_transfer_coefficient,
     display_Q,
     display_T,
+    plot_heat_transfer_coefficient,
+    plot_mixed_temperatures,
+    plot_temperature_comparison,
 )
-from python_magnetcooling.heat_exchanger_config import HeatExchangerConfig
-
 
 if __name__ == "__main__":
     command_line = None

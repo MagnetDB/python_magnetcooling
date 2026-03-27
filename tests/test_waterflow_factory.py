@@ -3,13 +3,14 @@ Test waterflow_factory module - demonstrates WaterFlow object creation from vari
 """
 
 import pytest
+
+from python_magnetcooling.waterflow import WaterFlow
 from python_magnetcooling.waterflow_factory import (
-    from_flow_params,
+    create_default,
     from_database_record,
     from_fitted_data,
-    create_default,
+    from_flow_params,
 )
-from python_magnetcooling.waterflow import WaterFlow
 
 
 def test_from_flow_params():
@@ -25,9 +26,9 @@ def test_from_flow_params():
         "BP": {"value": 4, "unit": "bar"},
         "Imax": {"value": 28000, "unit": "A"},
     }
-    
+
     flow = from_flow_params(params)
-    
+
     assert isinstance(flow, WaterFlow)
     assert flow.pump_speed_min == 1000
     assert flow.pump_speed_max == 2840
@@ -51,7 +52,7 @@ def test_from_flow_params_with_pout():
         "Pout": {"value": 5, "unit": "bar"},  # Using Pout instead of BP
         "Imax": {"value": 28000, "unit": "A"},
     }
-    
+
     flow = from_flow_params(params)
     assert flow.pressure_back == 5
 
@@ -69,7 +70,7 @@ def test_from_database_record_with_mapping():
         "back_pressure": 4,
         "max_current": 28000,
     }
-    
+
     mapping = {
         "Vp0": "min_pump_rpm",
         "Vpmax": "max_pump_rpm",
@@ -80,9 +81,9 @@ def test_from_database_record_with_mapping():
         "BP": "back_pressure",
         "Imax": "max_current",
     }
-    
+
     flow = from_database_record(record, mapping)
-    
+
     assert flow.pump_speed_min == 1000
     assert flow.pump_speed_max == 2840
     assert flow.flow_max == 140
@@ -101,7 +102,7 @@ def test_from_database_record_standard_format():
         "BP": {"value": 4},
         "Imax": {"value": 28000},
     }
-    
+
     flow = from_database_record(record)
     assert flow.current_max == 28000
 
@@ -109,7 +110,7 @@ def test_from_database_record_standard_format():
 def test_create_default():
     """Test creating WaterFlow with default values"""
     flow = create_default()
-    
+
     assert isinstance(flow, WaterFlow)
     assert flow.pump_speed_min == 1000
     assert flow.pump_speed_max == 2840
@@ -120,19 +121,13 @@ def test_from_fitted_data():
     """Test creating WaterFlow from fitted curve parameters"""
     # These would come from curve fitting experimental data
     pump_speed_fit = (2840, 1000)  # (Vpmax, Vp0)
-    flow_rate_fit = (0, 140)       # (F0, Fmax)
-    pressure_fit = (4, 22)         # (Pmin, Pmax)
+    flow_rate_fit = (0, 140)  # (F0, Fmax)
+    pressure_fit = (4, 22)  # (Pmin, Pmax)
     back_pressure = 4.0
     max_current = 28000
-    
-    flow = from_fitted_data(
-        pump_speed_fit,
-        flow_rate_fit,
-        pressure_fit,
-        back_pressure,
-        max_current
-    )
-    
+
+    flow = from_fitted_data(pump_speed_fit, flow_rate_fit, pressure_fit, back_pressure, max_current)
+
     assert flow.pump_speed_max == 2840
     assert flow.pump_speed_min == 1000
     assert flow.flow_max == 140
@@ -152,24 +147,24 @@ def test_waterflow_methods_work():
         "BP": {"value": 4, "unit": "bar"},
         "Imax": {"value": 28000, "unit": "A"},
     }
-    
+
     flow = from_flow_params(params)
-    
+
     # Test the WaterFlow methods
     current = 20000  # A
-    
+
     speed = flow.pump_speed(current)
     assert speed > 0
-    
+
     flow_rate = flow.flow_rate(current)
     assert flow_rate > 0
-    
+
     pressure = flow.pressure(current)
     assert pressure > 0
-    
+
     pressure_drop = flow.pressure_drop(current)
     assert pressure_drop >= 0
-    
+
     velocity = flow.velocity(current, 1e-4)  # 1e-4 m²
     assert velocity > 0
 
