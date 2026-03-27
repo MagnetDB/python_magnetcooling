@@ -15,7 +15,7 @@ if [ ! -d $VENVDIR ]; then
       python -m venv $VENVDIR
    fi
    . $VENVDIR/bin/activate
-   python -m pip install -e ".[dev]"
+   python -m pip install -e ".[dev,fitting]"
    deactivate
 fi
 
