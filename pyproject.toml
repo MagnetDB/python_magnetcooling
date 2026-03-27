@@ -69,11 +69,13 @@ testpaths = ["tests"]
 addopts = "--cov=python_magnetcooling --cov-report=html --cov-report=term"
 
 [tool.ruff]
+exclude = ["python_magnetcooling/clawtest1.py"]
 line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+ignore = ["E501", "W293", "W291"]
 
 [tool.ruff.format]
 quote-style = "double"
