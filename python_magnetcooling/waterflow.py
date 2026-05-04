@@ -16,6 +16,9 @@ from warnings import simplefilter
 import numpy as np
 from pint import Quantity, UnitRegistry
 
+# Import hysteresis model from hysteresis module
+from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
+
 # Ignore pint warnings
 simplefilter("ignore")
 Quantity([])
@@ -25,8 +28,6 @@ ureg = UnitRegistry()
 ureg.default_system = "SI"
 ureg.autoconvert_offset_to_baseunit = True
 
-# Import hysteresis model from hysteresis module
-from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
 
 
 @dataclass

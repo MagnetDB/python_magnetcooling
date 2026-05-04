@@ -9,7 +9,7 @@ This module provides utilities to construct WaterFlow instances from:
 
 from typing import Any, Dict, Optional
 
-from python_magnetcooling.waterflow import WaterFlow
+from python_magnetcooling.waterflow import FlowPressureFit, PumpSpeedFit, WaterFlow
 
 
 def from_flow_params(params: Dict[str, Any]) -> WaterFlow:
@@ -188,8 +188,8 @@ def from_fitted_data(
 
 
 def from_fits(
-    pump_fit: "PumpSpeedFit",
-    flow_pressure_fit: "FlowPressureFit",
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
 ) -> WaterFlow:
     """
     Create WaterFlow from fitting result dataclasses.

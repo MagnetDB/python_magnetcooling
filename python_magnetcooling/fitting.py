@@ -59,6 +59,8 @@ from typing import List, Optional, Tuple
 import numpy as np
 from scipy import optimize
 
+from .waterflow import WaterFlow
+
 logger = logging.getLogger("magnetcooling.fitting")
 
 
@@ -1716,7 +1718,7 @@ def build_waterflow_with_hysteresis(
     pump_fit: PumpSpeedFit,
     flow_pressure_fit: FlowPressureFit,
     hyst_fit: HysteresisFit,
-) -> "WaterFlow":
+) -> WaterFlow:
     """
     Construct a WaterFlow object with hysteresis parameters from fitted data.
 
@@ -2404,8 +2406,6 @@ def plot_hysteresis_fit(
     ...                     ylabel='Cooling Flow (m³/h)')
     """
     try:
-        import matplotlib.pyplot as plt
-
         from .hysteresis import plot_hysteresis_fit as _plot_hyst
     except ImportError:
         logger.warning("matplotlib not available. Cannot create plot.")

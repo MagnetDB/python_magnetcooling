@@ -71,7 +71,7 @@ class FeelppThermalHydraulicAdapter:
         except ValueError:
             raise ValueError(
                 f"Unknown cooling level '{args.cooling}'. "
-                f"Valid values: {[l.value for l in CoolingLevel]}"
+                f"Valid values: {[level.value for level in CoolingLevel]}"
             )
 
         waterflow = targets[target]["waterflow"]
