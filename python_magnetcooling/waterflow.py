@@ -19,8 +19,8 @@ from pint import Quantity, UnitRegistry
 # Import hysteresis model from hysteresis module
 from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
 
-# Ignore pint warnings
-simplefilter("ignore")
+# Suppress only pint's own DeprecationWarnings, not all library warnings.
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pint")
 Quantity([])
 
 # Pint configuration
