@@ -7,18 +7,19 @@ This module provides utilities to construct WaterFlow instances from:
 - Fitted experimental data
 """
 
-from typing import Dict, Any, Optional
-from python_magnetcooling.waterflow import WaterFlow
+from typing import Any, Dict, Optional
+
+from python_magnetcooling.waterflow import FlowPressureFit, PumpSpeedFit, WaterFlow
 
 
 def from_flow_params(params: Dict[str, Any]) -> WaterFlow:
     """
     Create WaterFlow object from flow parameters dictionary.
-    
+
     This is the primary factory method for creating WaterFlow instances from
     database records or fitted experimental data. The dictionary structure
     matches the format used in database exports and fitting procedures.
-    
+
     Args:
         params: Flow parameters dictionary with the following structure:
             {
@@ -31,12 +32,12 @@ def from_flow_params(params: Dict[str, Any]) -> WaterFlow:
                 "BP": {"value": float, "unit": "bar"},       # Back pressure
                 "Imax": {"value": float, "unit": "A"}        # Max current
             }
-            
+
             Note: "BP" and "Pout" are equivalent (back pressure)
-            
+
     Returns:
         WaterFlow instance configured with the provided parameters
-        
+
     Examples:
         >>> params = {
         ...     "Vp0": {"value": 1000, "unit": "rpm"},
@@ -50,14 +51,14 @@ def from_flow_params(params: Dict[str, Any]) -> WaterFlow:
         ... }
         >>> flow = from_flow_params(params)
         >>> print(f"Max flow: {flow.flow_max} l/s")
-        
+
     Raises:
         KeyError: If required parameters are missing
         ValueError: If parameter values are invalid
     """
     # Handle both "BP" and "Pout" keys for back pressure
     back_pressure_key = "BP" if "BP" in params else "Pout"
-    
+
     return WaterFlow(
         pump_speed_min=params["Vp0"]["value"],
         pump_speed_max=params["Vpmax"]["value"],
@@ -66,28 +67,27 @@ def from_flow_params(params: Dict[str, Any]) -> WaterFlow:
         pressure_max=params["Pmax"]["value"],
         pressure_min=params["Pmin"]["value"],
         pressure_back=params.get(back_pressure_key, {"value": 4})["value"],
-        current_max=params["Imax"]["value"]
+        current_max=params["Imax"]["value"],
     )
 
 
 def from_database_record(
-    record: Dict[str, Any],
-    key_mapping: Optional[Dict[str, str]] = None
+    record: Dict[str, Any], key_mapping: Optional[Dict[str, str]] = None
 ) -> WaterFlow:
     """
     Create WaterFlow object from a database record.
-    
+
     Provides flexibility for different database schemas by allowing custom
     key mappings between database fields and WaterFlow parameters.
-    
+
     Args:
         record: Database record dictionary
         key_mapping: Optional mapping of database keys to flow parameter keys.
             If None, assumes the record uses standard flow_params format.
-            
+
     Returns:
         WaterFlow instance
-        
+
     Examples:
         >>> record = {
         ...     "min_pump_rpm": 1000,
@@ -131,13 +131,13 @@ def from_database_record(
 def create_default() -> WaterFlow:
     """
     Create WaterFlow object with default parameter values.
-    
+
     These defaults are typical for magnet cooling systems but should be
     adjusted based on actual system specifications.
-    
+
     Returns:
         WaterFlow instance with default parameters
-        
+
     Examples:
         >>> flow = create_default()
         >>> print(f"Default max current: {flow.current_max} A")
@@ -150,24 +150,24 @@ def from_fitted_data(
     flow_rate_fit: tuple,
     pressure_fit: tuple,
     back_pressure: float,
-    max_current: float
+    max_current: float,
 ) -> WaterFlow:
     """
     Create WaterFlow from fitted curve parameters.
-    
+
     This is useful when flow parameters are determined by curve fitting
     experimental data, as done in the compute() function of flow_params.py.
-    
+
     Args:
         pump_speed_fit: (Vpmax, Vp0) tuple from pump speed fit
         flow_rate_fit: (F0, Fmax) tuple from flow rate fit
         pressure_fit: (Pmin, Pmax) tuple from pressure fit
         back_pressure: Back pressure value [bar]
         max_current: Maximum operating current [A]
-        
+
     Returns:
         WaterFlow instance
-        
+
     Examples:
         >>> # From fitting: Vp = Vpmax*(I/Imax)^2 + Vp0
         >>> pump_fit = (2840, 1000)  # (Vpmax, Vp0)
@@ -183,13 +183,13 @@ def from_fitted_data(
         pressure_min=pressure_fit[0],
         pressure_max=pressure_fit[1],
         pressure_back=back_pressure,
-        current_max=max_current
+        current_max=max_current,
     )
 
 
 def from_fits(
-    pump_fit: "PumpSpeedFit",
-    flow_pressure_fit: "FlowPressureFit",
+    pump_fit: PumpSpeedFit,
+    flow_pressure_fit: FlowPressureFit,
 ) -> WaterFlow:
     """
     Create WaterFlow from fitting result dataclasses.

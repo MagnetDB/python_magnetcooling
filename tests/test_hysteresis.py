@@ -1,11 +1,12 @@
 """Tests for hysteresis module"""
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
+
 from python_magnetcooling.hysteresis import (
-    multi_level_hysteresis,
     estimate_hysteresis_parameters,
+    multi_level_hysteresis,
     remove_low_x_outliers,
     remove_outliers,
 )
@@ -82,7 +83,7 @@ class TestMultiLevelHysteresis:
         assert y[1] == 250  # x=4, crossed first threshold (active_level=0)
         assert y[2] == 350  # x=9, crossed second threshold (active_level=1)
         assert y[3] == 450  # x=13, crossed third threshold (active_level=2)
-        
+
         # Check transitions on descent
         assert y[4] == 350  # x=9, still at level 1 (above desc threshold 1=6)
         assert y[5] == 250  # x=4, dropped to level 0 (above desc threshold 0=2)
@@ -213,19 +214,19 @@ class TestEstimateHysteresisParameters:
             np.linspace(0, 10, 30),
             np.linspace(10, 0, 30)
         ])
-        
+
         # Base pattern with noise
         y_base = np.concatenate([
             np.where(np.linspace(0, 10, 30) > 5, 200, 100),
             np.where(np.linspace(10, 0, 30) < 4, 100, 200)
         ])
-        
+
         # Add noise
         np.random.seed(42)
         y = y_base + np.random.normal(0, 5, len(y_base))
 
         df = pd.DataFrame({"x": x, "y": y})
-        
+
         # Request 2 levels
         result = estimate_hysteresis_parameters(df, x_col="x", y_col="y", n_levels=2)
 
@@ -262,7 +263,7 @@ class TestEstimateHysteresisParameters:
 
         # Note: verbose logging may require logger configuration in actual usage
         result = estimate_hysteresis_parameters(df, x_col="x", y_col="y", verbose=True)
-        
+
         # Just ensure it completes without error
         assert "diagnostics" in result
 
@@ -279,7 +280,7 @@ class TestRemoveLowXOutliers:
             np.random.uniform(5, 20, 100)   # High-x region
         ])
         y = x * 10 + np.random.normal(0, 2, 150)
-        
+
         # Add outliers in low-x region
         y[5] = 1000  # Extreme outlier in low-x
         y[10] = -500
@@ -317,7 +318,7 @@ class TestRemoveLowXOutliers:
         np.random.seed(42)
         x = np.random.uniform(0, 20, 100)
         y = x * 10 + np.random.normal(0, 2, 100)
-        
+
         # Add x and y outliers
         y[5] = 1000  # y outlier
         x[10] = -100  # x outlier in what should be low-x region
@@ -332,7 +333,7 @@ class TestRemoveLowXOutliers:
     def test_invalid_method_raises_error(self):
         """Test that invalid method raises ValueError"""
         df = pd.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-        
+
         with pytest.raises(ValueError, match="Unknown method"):
             remove_low_x_outliers(df, method="invalid_method")
 
@@ -358,10 +359,10 @@ class TestRemoveLowXOutliers:
         y[5] = 1000  # Outlier
 
         df = pd.DataFrame({"x": x, "y": y})
-        
+
         # Use 50th percentile - larger low-x region
         df_clean_50 = remove_low_x_outliers(df, x_col="x", y_col="y", x_percentile=50)
-        
+
         # Use 10th percentile - smaller low-x region
         df_clean_10 = remove_low_x_outliers(df, x_col="x", y_col="y", x_percentile=10)
 
@@ -378,7 +379,7 @@ class TestRemoveOutliers:
         np.random.seed(42)
         x = np.random.normal(10, 2, 100)
         y = np.random.normal(50, 5, 100)
-        
+
         # Add clear outliers
         x[5] = 1000
         y[10] = -500
@@ -422,7 +423,7 @@ class TestRemoveOutliers:
     def test_invalid_method_raises_error(self):
         """Test that invalid method raises ValueError"""
         df = pd.DataFrame({"x": [1, 2, 3], "y": [10, 20, 30]})
-        
+
         with pytest.raises(ValueError, match="Unknown method"):
             remove_outliers(df, method="nonexistent")
 
@@ -447,10 +448,10 @@ class TestRemoveOutliers:
         y[10] = 100
 
         df = pd.DataFrame({"x": x, "y": y})
-        
+
         # Strict threshold (remove more)
         df_strict = remove_outliers(df, method="iqr", threshold=1.0)
-        
+
         # Loose threshold (remove less)
         df_loose = remove_outliers(df, method="iqr", threshold=3.0)
 
@@ -473,7 +474,7 @@ class TestRemoveOutliers:
         x[5] = 1000
 
         df = pd.DataFrame({"x": x, "y": y})
-        
+
         # Should complete without error
         df_clean = remove_outliers(df, method="iqr", verbose=True)
         assert len(df_clean) > 0
@@ -486,18 +487,18 @@ class TestIntegrationScenarios:
         """Test complete pipeline: outlier removal -> parameter estimation"""
         # Create synthetic data with hysteresis and outliers
         np.random.seed(42)
-        
+
         # Ascending phase
         x_up = np.linspace(0, 20, 100)
         y_up = np.where(x_up > 8, 200, 100) + np.random.normal(0, 1, 100)  # Less noise
-        
+
         # Descending phase
         x_down = np.linspace(20, 0, 100)
         y_down = np.where(x_down < 6, 100, 200) + np.random.normal(0, 1, 100)  # Less noise
-        
+
         x = np.concatenate([x_up, x_down])
         y = np.concatenate([y_up, y_down])
-        
+
         # Add clear outliers
         y[10] = 1000
         y[50] = -500
@@ -514,7 +515,7 @@ class TestIntegrationScenarios:
         df_clean2 = remove_low_x_outliers(
             df_clean, x_col="x", y_col="y", x_percentile=20, method="iqr", threshold=5.0
         )
-        
+
         # Only proceed if we still have enough data
         if len(df_clean2) < 20:
             # Not enough data after cleaning - skip parameter estimation
@@ -543,7 +544,7 @@ class TestIntegrationScenarios:
             np.where(np.linspace(0, 15, 50) > 7, 200, 100),
             np.where(np.linspace(15, 0, 50) < 5, 100, 200)
         ])
-        
+
         df_train = pd.DataFrame({"x": x_train, "y": y_train})
 
         # Estimate parameters

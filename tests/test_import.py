@@ -1,7 +1,5 @@
 """Test basic package imports"""
 
-import pytest
-
 
 class TestPackageImports:
     """Test that all modules can be imported"""
@@ -49,14 +47,14 @@ class TestExceptionClasses:
     def test_exception_classes_importable(self):
         """Test that all exception classes can be imported"""
         from python_magnetcooling.exceptions import (
-            MagnetCoolingError,
-            WaterPropertiesError,
+            ConvergenceError,
             CorrelationError,
             FrictionError,
-            ValidationError,
-            ConvergenceError,
             HeatExchangerError,
             InvalidNTUError,
+            MagnetCoolingError,
+            ValidationError,
+            WaterPropertiesError,
         )
 
         assert MagnetCoolingError is not None

@@ -8,12 +8,16 @@ This module handles:
 - Velocity calculations based on operating conditions
 """
 
-import warnings
-from dataclasses import dataclass, field
-from typing import Optional, List
 import json
+from dataclasses import dataclass, field
+from typing import List
+from warnings import simplefilter
+
 import numpy as np
-from pint import UnitRegistry, Quantity
+from pint import Quantity, UnitRegistry
+
+# Import hysteresis model from hysteresis module
+from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
 
 # Suppress only pint's own DeprecationWarnings, not all library warnings.
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="pint")
@@ -24,18 +28,16 @@ ureg = UnitRegistry()
 ureg.default_system = "SI"
 ureg.autoconvert_offset_to_baseunit = True
 
-# Import hysteresis model from hysteresis module
-from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
 
 
 @dataclass
 class WaterFlow:
     """
     Water flow system characteristics
-    
+
     Represents pump curves and hydraulic system parameters for
     water-cooled magnet systems.
-    
+
     Attributes:
         pump_speed_min: Minimum pump speed [rpm]
         pump_speed_max: Maximum pump speed [rpm]
@@ -63,7 +65,7 @@ class WaterFlow:
         >>> p = flow.pressure(20000)
         >>> print(f"Pressure at 20kA: {p:.2f} bar")
     """
-    
+
     pump_speed_min: float = 1000  # rpm
     pump_speed_max: float = 2840  # rpm
     flow_min: float = 0  # l/s
@@ -75,18 +77,18 @@ class WaterFlow:
     hysteresis_thresholds: List[tuple] = field(default_factory=list)  # [(asc, desc), ...] in MW
     hysteresis_low_values: List[float] = field(default_factory=list)  # m³/h
     hysteresis_high_values: List[float] = field(default_factory=list)  # m³/h
-    
+
     @classmethod
     def from_file(cls, filename: str) -> "WaterFlow":
         """
         Load flow parameters from JSON file
-        
+
         Args:
             filename: Path to JSON file with flow parameters
-            
+
         Returns:
             WaterFlow instance
-            
+
         Example JSON format:
         {
             "Vp0": {"value": 1000, "unit": "rpm"},
@@ -101,12 +103,12 @@ class WaterFlow:
         """
         with open(filename, "r") as f:
             params = json.load(f)
-        
+
         # Load hysteresis parameters if present
         hysteresis_thresholds = []
         hysteresis_low_values = []
         hysteresis_high_values = []
-        
+
         if "hysteresis" in params:
             hyst = params["hysteresis"]
             # Convert thresholds to list of tuples if they're lists
@@ -117,7 +119,7 @@ class WaterFlow:
                 hysteresis_thresholds = thresholds_raw
             hysteresis_low_values = hyst.get("low_values", [])
             hysteresis_high_values = hyst.get("high_values", [])
-        
+
         return cls(
             pump_speed_min=params["Vp0"]["value"],
             pump_speed_max=params["Vpmax"]["value"],
@@ -131,101 +133,95 @@ class WaterFlow:
             hysteresis_low_values=hysteresis_low_values,
             hysteresis_high_values=hysteresis_high_values
         )
-    
+
     def pump_speed(self, current: float) -> float:
         """
         Compute pump speed as function of current
-        
+
         Assumes quadratic relationship: Vp = Vp_max·(I/I_max)² + Vp_min
-        
+
         Args:
             current: Operating current [A]
-            
+
         Returns:
             Pump speed [rpm]
         """
         if current >= self.current_max:
             return self.pump_speed_max + self.pump_speed_min
-        
-        return (
-            self.pump_speed_max * (current / self.current_max) ** 2
-            + self.pump_speed_min
-        )
-    
+
+        return self.pump_speed_max * (current / self.current_max) ** 2 + self.pump_speed_min
+
     def flow_rate(self, current: float) -> float:
         """
         Compute flow rate as function of current
-        
+
         Args:
             current: Operating current [A]
-            
+
         Returns:
             Flow rate [m³/s]
         """
         # Convert l/s to m³/s
         units = [
             ureg.liter / ureg.second,
-            ureg.meter ** 3 / ureg.second,
+            ureg.meter**3 / ureg.second,
         ]
-        
+
         F0 = Quantity(self.flow_min, units[0]).to(units[1]).magnitude
         Fmax = Quantity(self.flow_max, units[0]).to(units[1]).magnitude
-        
+
         if current >= self.current_max:
             return F0 + Fmax
-        
+
         Vp_total = self.pump_speed_max + self.pump_speed_min
         return F0 + Fmax * self.pump_speed(current) / Vp_total
-    
+
     def pressure(self, current: float) -> float:
         """
         Compute system pressure as function of current
-        
+
         Assumes quadratic relationship with pump speed
-        
+
         Args:
             current: Operating current [A]
-            
+
         Returns:
             Pressure [bar]
         """
         if current >= self.current_max:
             return self.pressure_min + self.pressure_max
-        
+
         Vp_total = self.pump_speed_max + self.pump_speed_min
-        return (
-            self.pressure_min
-            + self.pressure_max * (self.pump_speed(current) / Vp_total) ** 2
-        )
-    
+        return self.pressure_min + self.pressure_max * (self.pump_speed(current) / Vp_total) ** 2
+
     def pressure_drop(self, current: float) -> float:
         """
         Compute pressure drop (pressure minus back pressure)
-        
+
         Args:
             current: Operating current [A]
-            
+
         Returns:
             Pressure drop [bar]
         """
         return self.pressure(current) - self.pressure_back
-    
+
     def velocity(self, current: float, cross_section: float) -> float:
         """
         Compute mean velocity from flow rate and cross-section
-        
+
         Args:
             current: Operating current [A]
             cross_section: Total cross-sectional area [m²]
-            
+
         Returns:
             Mean velocity [m/s]
         """
         if cross_section <= 0:
             raise ValueError("Cross-section must be positive")
-        
+
         return self.flow_rate(current) / cross_section
-    
+
     def debitbrut(self, power: float) -> float:
         """
         Compute secondary cooling loop flow rate as function of power using hysteresis model.
@@ -269,22 +265,22 @@ class WaterFlow:
                 "Set hysteresis_thresholds (as list of (asc, desc) tuples), "
                 "hysteresis_low_values, and hysteresis_high_values before calling debitbrut()."
             )
-        
+
         if len(self.hysteresis_low_values) != len(self.hysteresis_thresholds):
             raise ValueError(
                 f"hysteresis_low_values must have {len(self.hysteresis_thresholds)} "
                 f"elements (same as number of thresholds), got {len(self.hysteresis_low_values)}"
             )
-        
+
         if len(self.hysteresis_high_values) != len(self.hysteresis_thresholds):
             raise ValueError(
                 f"hysteresis_high_values must have {len(self.hysteresis_thresholds)} "
                 f"elements (same as number of thresholds), got {len(self.hysteresis_high_values)}"
             )
-        
+
         # Convert scalar to array for processing
         power_array = np.atleast_1d(power)
-        
+
         # Apply hysteresis model
         flow_rates = _multi_level_hysteresis(
             power_array,
@@ -292,12 +288,12 @@ class WaterFlow:
             self.hysteresis_low_values,
             self.hysteresis_high_values
         )
-        
+
         # Return scalar if input was scalar
         if np.isscalar(power):
             return float(flow_rates[0])
         return flow_rates
-    
+
     def to_dict(self) -> dict:
         """Export parameters as dictionary"""
         result = {
@@ -310,7 +306,7 @@ class WaterFlow:
             "BP": {"value": self.pressure_back, "unit": "bar"},
             "Imax": {"value": self.current_max, "unit": "A"},
         }
-        
+
         # Add hysteresis parameters if configured
         if self.hysteresis_thresholds:
             result["hysteresis"] = {
@@ -320,9 +316,9 @@ class WaterFlow:
                 "unit_thresholds": "MW",
                 "unit_values": "m³/h"
             }
-        
+
         return result
-    
+
     def to_file(self, filename: str) -> None:
         """Save parameters to JSON file"""
         with open(filename, "w") as f:

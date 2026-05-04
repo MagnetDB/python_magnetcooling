@@ -9,14 +9,15 @@ This example shows how to:
 """
 
 import numpy as np
+
 from python_magnetcooling.fitting import (
+    compute_all_hydraulic_metrics,
+    compute_flow_fit_metrics,
+    compute_hysteresis_fit_metrics,
+    compute_pressure_fit_metrics,
+    compute_pump_fit_metrics,
     fit_hydraulic_system,
     fit_hysteresis_parameters,
-    compute_pump_fit_metrics,
-    compute_flow_fit_metrics,
-    compute_pressure_fit_metrics,
-    compute_all_hydraulic_metrics,
-    compute_hysteresis_fit_metrics,
 )
 from python_magnetcooling.hysteresis import (
     compute_hysteresis_fit_metrics as compute_hyst_metrics_direct,
@@ -73,7 +74,7 @@ def example_hydraulic_metrics():
     print("\n--- Individual Metrics ---")
 
     pump_metrics = compute_pump_fit_metrics(current, pump_speed, pump_fit)
-    print(f"\nPump Fit Metrics:")
+    print("\nPump Fit Metrics:")
     print(f"  RMSE:      {pump_metrics.rmse:.3f} rpm")
     print(f"  MAE:       {pump_metrics.mae:.3f} rpm")
     print(f"  Max Error: {pump_metrics.max_error:.3f} rpm")
@@ -85,7 +86,7 @@ def example_hydraulic_metrics():
     flow_metrics = compute_flow_fit_metrics(
         current, flow_rate, pump_fit, flow_pressure_fit
     )
-    print(f"\nFlow Fit Metrics:")
+    print("\nFlow Fit Metrics:")
     print(f"  RMSE:      {flow_metrics.rmse:.3f} l/s")
     print(f"  MAE:       {flow_metrics.mae:.3f} l/s")
     print(f"  Max Error: {flow_metrics.max_error:.3f} l/s")
@@ -97,7 +98,7 @@ def example_hydraulic_metrics():
     pressure_metrics = compute_pressure_fit_metrics(
         current, pressure, pump_fit, flow_pressure_fit
     )
-    print(f"\nPressure Fit Metrics:")
+    print("\nPressure Fit Metrics:")
     print(f"  RMSE:      {pressure_metrics.rmse:.3f} bar")
     print(f"  MAE:       {pressure_metrics.mae:.3f} bar")
     print(f"  Max Error: {pressure_metrics.max_error:.3f} bar")
@@ -294,11 +295,11 @@ def example_refit_decision():
             reasons.append(f"High max error ({metrics.max_error:.1f} > 200 rpm)")
 
         if needs_refit:
-            print(f"  ✗ REFIT RECOMMENDED")
+            print("  ✗ REFIT RECOMMENDED")
             for reason in reasons:
                 print(f"    - {reason}")
         else:
-            print(f"  ✓ FIT ACCEPTABLE")
+            print("  ✓ FIT ACCEPTABLE")
 
         print()
 

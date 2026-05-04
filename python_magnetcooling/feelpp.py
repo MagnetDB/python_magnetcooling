@@ -3,16 +3,17 @@ Adapter to connect thermohydraulics.py with the FeelPP workflow.
 """
 
 from typing import Dict, Optional
+
 import pandas as pd
 
 from .channel import CoolingLevel
 from .thermohydraulics import (
+    AxialDiscretization,
+    ChannelGeometry,
+    ChannelInput,
     ThermalHydraulicCalculator,
     ThermalHydraulicInput,
     ThermalHydraulicOutput,
-    ChannelInput,
-    ChannelGeometry,
-    AxialDiscretization,
 )
 
 
@@ -70,7 +71,7 @@ class FeelppThermalHydraulicAdapter:
         except ValueError:
             raise ValueError(
                 f"Unknown cooling level '{args.cooling}'. "
-                f"Valid values: {[l.value for l in CoolingLevel]}"
+                f"Valid values: {[level.value for level in CoolingLevel]}"
             )
 
         waterflow = targets[target]["waterflow"]
@@ -247,7 +248,7 @@ class FeelppThermalHydraulicAdapter:
                                 channel_out.heat_coeff_distribution,
                             ):
                                 updates[param_name] = h_k
-                                
+
                     # Write per-section Tw (and hw for gradHZH) back to the CSV
                     # that feelpp uses as a boundary-condition table.  Without
                     # this, the axial temperature profile is stale on the next

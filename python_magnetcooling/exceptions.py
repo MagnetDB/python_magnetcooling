@@ -3,44 +3,59 @@
 
 class MagnetCoolingError(Exception):
     """Base exception for python_magnetcooling"""
+
     pass
 
 
 class WaterPropertiesError(MagnetCoolingError):
     """Error in water properties calculation"""
+
     pass
 
 
 class CorrelationError(MagnetCoolingError):
     """Error in heat transfer correlation"""
+
     pass
 
 
 class FrictionError(MagnetCoolingError):
     """Error in friction factor calculation"""
+
     pass
 
 
 class ValidationError(MagnetCoolingError):
     """Input validation error"""
+
     pass
 
 
 class ConvergenceError(MagnetCoolingError):
     """Iterative solver did not converge"""
+
     pass
 
 
 class HeatExchangerError(MagnetCoolingError):
     """Base exception for heat exchanger calculations"""
+
     pass
 
 
 class InvalidNTUError(HeatExchangerError):
     """Invalid NTU value in heat exchanger calculation"""
-    
-    def __init__(self, ntu_value: float, tci: float, thi: float, 
-                 pci: float, phi: float, debitc: float, debith: float):
+
+    def __init__(
+        self,
+        ntu_value: float,
+        tci: float,
+        thi: float,
+        pci: float,
+        phi: float,
+        debitc: float,
+        debith: float,
+    ):
         self.ntu_value = ntu_value
         self.tci = tci
         self.thi = thi
@@ -57,9 +72,17 @@ class InvalidNTUError(HeatExchangerError):
 
 class InvalidHeatTransferError(HeatExchangerError):
     """Invalid heat transfer rate in heat exchanger calculation"""
-    
-    def __init__(self, q_value: float, tci: float, thi: float,
-                 pci: float, phi: float, debitc: float, debith: float):
+
+    def __init__(
+        self,
+        q_value: float,
+        tci: float,
+        thi: float,
+        pci: float,
+        phi: float,
+        debitc: float,
+        debith: float,
+    ):
         self.q_value = q_value
         self.tci = tci
         self.thi = thi
@@ -76,10 +99,19 @@ class InvalidHeatTransferError(HeatExchangerError):
 
 class InvalidTemperatureError(HeatExchangerError):
     """Invalid temperature value in heat exchanger calculation"""
-    
-    def __init__(self, temp_name: str, temp_value: float, h: float,
-                 tci: float, thi: float, pci: float, phi: float,
-                 debitc: float, debith: float):
+
+    def __init__(
+        self,
+        temp_name: str,
+        temp_value: float,
+        h: float,
+        tci: float,
+        thi: float,
+        pci: float,
+        phi: float,
+        debitc: float,
+        debith: float,
+    ):
         self.temp_name = temp_name
         self.temp_value = temp_value
         self.h = h

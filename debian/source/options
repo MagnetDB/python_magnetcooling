@@ -1,11 +1,11 @@
-examples/
-htmlcov/
-*.egg-info/
-__pycache__/
-*.pyc
-.pytest_cache/
-.coverage
-build/
-dist/
-.git/
-.gitignore
+# extend-diff-ignore = examples/
+extend-diff-ignore = htmlcov/
+extend-diff-ignore = .*\.egg-info/
+extend-diff-ignore = __pycache__/
+extend-diff-ignore = .*\.pyc
+extend-diff-ignore = \.pytest_cache/
+extend-diff-ignore = \.coverage
+extend-diff-ignore = build/
+extend-diff-ignore = dist/
+extend-diff-ignore = \.git/
+extend-diff-ignore = \.gitignore

@@ -58,10 +58,10 @@ class HeatExchangerConfig:
             f"  area={self.area} m²,\n"
             f"  num_plates={self.num_plates},\n"
             f"  num_channels={self.num_channels},\n"
-            f"  plate_spacing={self.plate_spacing*1000:.1f} mm,\n"
+            f"  plate_spacing={self.plate_spacing * 1000:.1f} mm,\n"
             f"  plate_width={self.plate_width} m,\n"
-            f"  channel_area={self.channel_area*1e6:.2f} cm²,\n"
-            f"  hydraulic_diameter={self.hydraulic_diameter*1000:.1f} mm,\n"
+            f"  channel_area={self.channel_area * 1e6:.2f} cm²,\n"
+            f"  hydraulic_diameter={self.hydraulic_diameter * 1000:.1f} mm,\n"
             f"  correlation_params={self.correlation_params}\n"
             f")"
         )

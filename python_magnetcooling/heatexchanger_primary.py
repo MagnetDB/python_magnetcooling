@@ -2,20 +2,20 @@
 """Heat exchanger calculations for primary cooling loop."""
 
 from __future__ import annotations
-from typing import Tuple, Optional
 
 import math
+from typing import Optional, Tuple
 
-import pandas as pd
 import ht
+import pandas as pd
 
-from .water_properties import WaterProperties
 from .exceptions import (
-    InvalidNTUError,
     InvalidHeatTransferError,
+    InvalidNTUError,
     InvalidTemperatureError,
 )
-from .heat_exchanger_config import HeatExchangerConfig, DEFAULT_HX_CONFIG
+from .heat_exchanger_config import DEFAULT_HX_CONFIG, HeatExchangerConfig
+from .water_properties import WaterProperties
 
 
 # Plotting helper functions
@@ -218,44 +218,52 @@ def calculate_heat_profiles(
         df["QNTU"] = df.apply(lambda row: apply_heatexchange(row, row.Ohtc), axis=1)
 
     df["Qhot"] = df.apply(
-        lambda row: ((row.Flow) * 1.0e-3 + 0 / 3600.0)
-        * (
-            get_rho(row.BP, row.Tout) * get_cp(row.BP, row.Tout) * (row.Tout)
-            - get_rho(row.HP, row.Tin) * get_cp(row.HP, row.Tin) * row.Tin
-        )
-        / 1.0e6,
+        lambda row: (
+            ((row.Flow) * 1.0e-3 + 0 / 3600.0)
+            * (
+                get_rho(row.BP, row.Tout) * get_cp(row.BP, row.Tout) * (row.Tout)
+                - get_rho(row.HP, row.Tin) * get_cp(row.HP, row.Tin) * row.Tin
+            )
+            / 1.0e6
+        ),
         axis=1,
     )
 
     df["QhotHx"] = df.apply(
-        lambda row: (row.Flowhot)
-        * (
-            get_rho(row.BP, row.Thi) * get_cp(row.BP, row.Thi) * row.Thi
-            - get_rho(row.HP, row.Tin) * get_cp(row.HP, row.Tin) * row.Tin
-        )
-        / 1.0e6,
+        lambda row: (
+            (row.Flowhot)
+            * (
+                get_rho(row.BP, row.Thi) * get_cp(row.BP, row.Thi) * row.Thi
+                - get_rho(row.HP, row.Tin) * get_cp(row.HP, row.Tin) * row.Tin
+            )
+            / 1.0e6
+        ),
         axis=1,
     )
 
     df["QcoldHx"] = df.apply(
-        lambda row: row.debitbrut
-        / 3600.0
-        * (
-            get_rho(10, row.tsb) * get_cp(10, row.tsb) * row.tsb
-            - get_rho(10, row.teb) * get_cp(10, row.teb) * row.teb
-        )
-        / 1.0e6,
+        lambda row: (
+            row.debitbrut
+            / 3600.0
+            * (
+                get_rho(10, row.tsb) * get_cp(10, row.tsb) * row.tsb
+                - get_rho(10, row.teb) * get_cp(10, row.teb) * row.teb
+            )
+            / 1.0e6
+        ),
         axis=1,
     )
 
     df["Pinstall"] = df.apply(
-        lambda row: debit_alim
-        / 3600.0
-        * (
-            get_rho(row.BP, row.TAlimout) * get_cp(row.BP, row.TAlimout) * row.TAlimout
-            - get_rho(row.HP, row.Tin) * get_cp(row.HP, row.Tin) * row.Tin
-        )
-        / 1.0e6,
+        lambda row: (
+            debit_alim
+            / 3600.0
+            * (
+                get_rho(row.BP, row.TAlimout) * get_cp(row.BP, row.TAlimout) * row.TAlimout
+                - get_rho(row.HP, row.Tin) * get_cp(row.HP, row.Tin) * row.Tin
+            )
+            / 1.0e6
+        ),
         axis=1,
     )
 
@@ -813,7 +821,7 @@ def calculate_heat_transfer_coefficients(
     cooling_params = hx_config.correlation_params
 
     # Calculate flow velocities
-    df["Flowhot"] = df.apply(lambda row: ((row.Flow) * 1.0e-3 + debit_alim / 3600.0), axis=1)
+    df["Flowhot"] = df.apply(lambda row: (row.Flow) * 1.0e-3 + debit_alim / 3600.0, axis=1)
     df["MeanU_h"] = df.apply(
         lambda row: (row.Flowhot) / (Ac * Nc),
         axis=1,

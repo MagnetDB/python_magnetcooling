@@ -1,8 +1,9 @@
 """Tests for water properties module"""
 
 import pytest
-from python_magnetcooling.water_properties import WaterProperties, WaterState
+
 from python_magnetcooling.exceptions import WaterPropertiesError
+from python_magnetcooling.water_properties import WaterProperties, WaterState
 
 
 class TestWaterProperties:

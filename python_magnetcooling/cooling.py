@@ -11,8 +11,8 @@ cooling calculations. It internally delegates to the newer class-based modules:
 New code should use these modules directly rather than this legacy interface.
 """
 
-from typing import List
 from math import exp, log, log10, sqrt
+from typing import List
 
 from .water_properties import WaterProperties, WaterState
 
@@ -180,6 +180,7 @@ def _iterative_convergence(
 
 def Colebrook(Re: float, Dh: float, f: float, rugosity: float) -> float:
     """Colebrook-White friction factor (iterative)."""
+
     def compute_new(val):
         return -2 * log10(rugosity / (3.7 * Dh) + 2.51 / Re * val)
 
@@ -190,6 +191,7 @@ def Colebrook(Re: float, Dh: float, f: float, rugosity: float) -> float:
 
 def Swamee(Re: float, Dh: float, f: float, rugosity: float) -> float:
     """Swamee-Jain explicit approximation of Colebrook."""
+
     def compute_new(val):
         return 1.325 / log(rugosity / (3.7 * Dh) + 5.74 / exp(log(Re) * 0.9)) ** 2
 
@@ -431,4 +433,5 @@ def getTout(T: List[float], VolMass: List[float], SpecHeat: List[float], Q: List
     # thermohydraulics imports cooling at module level, so cooling must not
     # import thermohydraulics at module level.
     from .thermohydraulics import compute_mixed_outlet_temperature
+
     return compute_mixed_outlet_temperature(T, VolMass, SpecHeat, Q)
