@@ -46,7 +46,7 @@ class FeelppThermalHydraulicAdapter:
         Returns:
             (ThermalHydraulicOutput, parameters_update, dict_df_update)
         """
-        waterflow = targets[target]["waterflow"]
+        # waterflow = targets[target]["waterflow"]
         objectif = abs(targets[target]["objectif"])
 
         th_input = self._build_input_from_feelpp(
@@ -55,7 +55,9 @@ class FeelppThermalHydraulicAdapter:
 
         th_output = self.calculator.compute(th_input)
 
-        parameters_update = self._extract_parameter_updates(th_output, p_params, args, parameters, basedir)
+        parameters_update = self._extract_parameter_updates(
+            th_output, p_params, args, parameters, basedir
+        )
         dict_df_update = self._update_dict_df(dict_df, target, th_output, p_params)
 
         return th_output, parameters_update, dict_df_update
@@ -71,7 +73,7 @@ class FeelppThermalHydraulicAdapter:
         except ValueError:
             raise ValueError(
                 f"Unknown cooling level '{args.cooling}'. "
-                f"Valid values: {[l.value for l in CoolingLevel]}"
+                f"Valid values: {[level.value for level in CoolingLevel]}"
             )
 
         waterflow = targets[target]["waterflow"]
@@ -253,13 +255,18 @@ class FeelppThermalHydraulicAdapter:
                     # that feelpp uses as a boundary-condition table.  Without
                     # this, the axial temperature profile is stale on the next
                     # outer iteration.
-                    if parameters is not None and channel_out.temp_rise_distribution is not None:
+                    if (
+                        parameters is not None
+                        and channel_out.temp_rise_distribution is not None
+                    ):
                         _TwH_params = p_params.get("TwH", [])
                         _ch_idx = list(th_output.channels).index(channel_out)
                         if _ch_idx < len(_TwH_params):
                             _twh_val = parameters.get(_TwH_params[_ch_idx])
                             if isinstance(_twh_val, dict):
-                                _csvfile = _twh_val["filename"].replace("$cfgdir", basedir)
+                                _csvfile = _twh_val["filename"].replace(
+                                    "$cfgdir", basedir
+                                )
                                 _tw_data = pd.read_csv(_csvfile, sep=",")
                                 # Reconstruct absolute Tw from inlet + cumulative rises
                                 _tw_inlet = float(_tw_data["Tw"].iloc[0])
@@ -303,7 +310,9 @@ class FeelppThermalHydraulicAdapter:
             dh_params = p_params.get("Dh", [])
             cname = dh_params[i].replace("Dh_", "") if i < len(dh_params) else f"ch_{i}"
 
-            dict_df[target]["HeatCoeff"][f"hw_{cname}"] = [round(channel_out.heat_coeff, 3)]
+            dict_df[target]["HeatCoeff"][f"hw_{cname}"] = [
+                round(channel_out.heat_coeff, 3)
+            ]
             dict_df[target]["DT"][f"dTw_{cname}"] = [round(channel_out.temp_rise, 3)]
             dict_df[target]["Uw"][f"Uw_{cname}"] = [round(channel_out.velocity, 3)]
 
@@ -313,15 +322,15 @@ class FeelppThermalHydraulicAdapter:
             # gradHZ / gradHZH: store per-section Tw data for feelpp BCs.
             # T_in is already in the parameters; dTw per section is new.
             if channel_out.temp_rise_distribution is not None:
-                dict_df[target].setdefault("DTZ", {})[f"dTwZ_{cname}"] = (
-                    channel_out.temp_rise_distribution
-                )
+                dict_df[target].setdefault("DTZ", {})[
+                    f"dTwZ_{cname}"
+                ] = channel_out.temp_rise_distribution
 
             # gradHZH: store per-section h distribution for feelpp BCs.
             if channel_out.heat_coeff_distribution is not None:
-                dict_df[target].setdefault("HeatCoeffZ", {})[f"hwZ_{cname}"] = (
-                    channel_out.heat_coeff_distribution
-                )
+                dict_df[target].setdefault("HeatCoeffZ", {})[
+                    f"hwZ_{cname}"
+                ] = channel_out.heat_coeff_distribution
 
         dict_df[target]["Tout"] = th_output.outlet_temp_mixed
         dict_df[target]["flow"] = th_output.total_flow_rate

@@ -645,8 +645,8 @@ if __name__ == "__main__":
     start_timestamp = mrun.getMData().getStartDate()
 
     # Add Power Data
-    mrun.getMData().addData("PH", "PH = UH * IH")
-    mrun.getMData().addData("PB", "PB = UB * IB")
+    mrun.getMData().addData("PH", "PH = UH * IH", symbol="P_H", unit="watt", label="Upper Magnet Power", description="Upper magnet electrical power")
+    mrun.getMData().addData("PB", "PB = UB * IB", symbol="P_B", unit="watt", label="Lower Magnet Power", description="Lower magnet electrical power")
 
     # use smoothed data instead of raw data
     smoothedkeys = [
@@ -681,9 +681,9 @@ if __name__ == "__main__":
 
     dkeys = mrun.getKeys()
 
-    mrun.getMData().addData("Flow", "Flow = FlowH + FlowH")
-    mrun.getMData().addData("Tin", "Tin = (TinH + TinH)/2.")
-    mrun.getMData().addData("HP", "HP = (HPH + HPH)/2.")
+    mrun.getMData().addData("Flow", "Flow = FlowH + FlowH", symbol="Q", unit="liter/second", label="Total Flow", description="Total cooling water flow rate")
+    mrun.getMData().addData("Tin", "Tin = (TinH + TinH)/2.", symbol="T", unit="degC", label="Inlet Temperature", description="Average cooling water inlet temperature")
+    mrun.getMData().addData("HP", "HP = (HPH + HPH)/2.", symbol="P", unit="megawatt", label="High Power", description="Average magnet high power")
 
     # extract data
     keys = [

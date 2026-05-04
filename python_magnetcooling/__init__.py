@@ -72,7 +72,7 @@ from .thermohydraulics import (
     ThermalHydraulicOutput,
     compute_single_channel,
 )
-from .water_properties import WaterProperties, get_cp, get_rho
+from .water_properties import WaterProperties
 from .waterflow import WaterFlow
 from .waterflow_factory import (
     create_default as create_default_waterflow,
@@ -123,4 +123,3 @@ __all__ = [
     "available_correlations",
     "available_friction_models",
 ]
-

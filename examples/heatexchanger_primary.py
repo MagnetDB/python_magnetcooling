@@ -139,21 +139,21 @@ if __name__ == "__main__":
     start_timestamp = mrun.getMData().getStartDate()
 
     if "Flow" not in mrun.getKeys():
-        mrun.getMData().addData("Flow", "Flow = FlowH + FlowB")
+        mrun.getMData().addData("Flow", "Flow = FlowH + FlowB", symbol="Q", unit="liter/second", label="Total Flow", description="Total cooling water flow rate")
     if "Tin" not in mrun.getKeys():
-        mrun.getMData().addData("Tin", "Tin = (TinH + TinB)/2.")
+        mrun.getMData().addData("Tin", "Tin = (TinH + TinB)/2.", symbol="T", unit="degC", label="Inlet Temperature", description="Average cooling water inlet temperature")
     if "HP" not in mrun.getKeys():
-        mrun.getMData().addData("HP", "HP = (HPH + HPB)/2.")
+        mrun.getMData().addData("HP", "HP = (HPH + HPB)/2.", symbol="P", unit="megawatt", label="High Power", description="Average magnet high power")
     if "TAlimout" not in mrun.getKeys():
         # Talim not defined, try to estimate it
         print("TAlimout key not present - set TAlimout=0")
-        mrun.getMData().addData("Talim", "TAlimout = 0")
+        mrun.getMData().addData("Talim", "TAlimout = 0", symbol="T", unit="degC", label="Supply Temperature", description="Cooling water supply temperature (unavailable, set to 0)")
 
     pretreatment_keys = ["flow_secondary", "Flow", "temp_secondary_in", "Tout", "Pmagnet", "Ptot"]
     if "TAlimout" in mrun.getKeys():
         pretreatment_keys.append("TAlimout")
     else:
-        mrun.getMData().addData("TAlimout", "TAlimout = TinH")
+        mrun.getMData().addData("TAlimout", "TAlimout = TinH", symbol="T", unit="degC", label="Supply Temperature", description="Cooling water supply temperature estimated from upper magnet inlet")
 
     # filter spikes
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
@@ -208,11 +208,11 @@ if __name__ == "__main__":
         pd.set_option("display.max_columns", None)
 
     if "PH" not in mrun.getKeys():
-        mrun.getMData().addData("PH", "PH = UH * IH")
+        mrun.getMData().addData("PH", "PH = UH * IH", symbol="P_H", unit="watt", label="Upper Magnet Power", description="Upper magnet electrical power")
     if "PB" not in mrun.getKeys():
-        mrun.getMData().addData("PB", "PB = UB * IB")
+        mrun.getMData().addData("PB", "PB = UB * IB", symbol="P_B", unit="watt", label="Lower Magnet Power", description="Lower magnet electrical power")
     if "Pt" not in mrun.getKeys():
-        mrun.getMData().addData("Pt", "Pt = (PH + PB)/1.e+6")
+        mrun.getMData().addData("Pt", "Pt = (PH + PB)/1.e+6", symbol="P", unit="megawatt", label="Total Magnet Power", description="Total electrical power in MW")
     df = mrun.getMData().getPandasData(key=None)
 
     # Calculate extended temperature fields using module function
