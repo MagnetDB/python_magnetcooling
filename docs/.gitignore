@@ -6,3 +6,5 @@ _templates/
 # Auto-generated files
 *.pyc
 __pycache__/
+
+.envrc
