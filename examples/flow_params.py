@@ -322,7 +322,7 @@ def compute(
                                     if debug:
                                         _Istats = result[Ikey].describe(include="all")
                                         print(
-                                            f"Rpmmax={_Rpmmax}, thresold={threshold} {Ikey}: {_Istats}, Field: {result['Field'].max()}"
+                                            f"Rpmmax={_Rpmmax}, threshold={threshold} {Ikey}: {_Istats}, Field: {result['Field'].max()}"
                                         )
                                         """ """
                                         import matplotlib.pyplot as plt
