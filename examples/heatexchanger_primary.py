@@ -49,7 +49,8 @@ if __name__ == "__main__":
         type=float,
         default=0,
     )
-    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", type=str)
+    parser.add_argument("--assembly", dest="assembly", help="specify an assembly (ex. M8, M9,...)", type=str)
+    parser.add_argument("--site", dest="assembly", help=argparse.SUPPRESS)
     parser.add_argument(
         "--debit_alim",
         help="specify flowrate for power cooling - one half only (default: 60 m3/h)",
@@ -109,22 +110,22 @@ if __name__ == "__main__":
         print("so far only txt file support is implemented")
         sys.exit(0)
 
-    housing = args.site
+    housing = args.assembly
     filename = os.path.basename(args.input_file)
     result = filename.startswith("M")
     if result:
         try:
             index = filename.index("_")
-            args.site = filename[0:index]
-            housing = args.site
-            print(f"site detected: {args.site}")
+            args.assembly = filename[0:index]
+            housing = args.assembly
+            print(f"assembly detected: {args.assembly}")
         except Exception:
-            print("no site detected - use args.site argument instead")
+            print("no assembly detected - use args.assembly argument instead")
             pass
 
-    mrun = MagnetRun.fromtxt(housing, args.site, args.input_file)
-    if not args.site:
-        args.site = mrun.getSite()
+    mrun = MagnetRun.fromtxt(housing, args.assembly, args.input_file)
+    if not args.assembly:
+        args.assembly = mrun.getAssembly()
 
     experiment = mrun.getInsert().replace(r"_", r"\_")
 
