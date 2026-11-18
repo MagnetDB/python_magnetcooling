@@ -53,7 +53,6 @@ def stats(
     )
 
     if debug:
-        stats = result[Okey].describe(include="all")
         print(f"{Okey}: stats")
     return (result[Okey].mean(), result[Okey].std())
 
@@ -212,7 +211,6 @@ def compute(
 
             # download files
             files = []
-            total = 0
             nrecords = len(records)
             ithreshold = nrecords
             if nrecords > samples:
@@ -422,8 +420,6 @@ def compute(
                 )
                 flow_params["Pmin"]["value"] = params[0]
                 flow_params["Pmax"]["value"] = params[1]
-                P0 = flow_params["Pmin"]["value"]
-                Pmax = flow_params["Pmax"]["value"]
                 params = []
 
                 # correlation Pout

@@ -204,10 +204,9 @@ class TestEstimateHysteresisParameters:
         """Test with explicit n_levels parameter"""
         # Try sklearn import first
         try:
-            from sklearn.cluster import KMeans
-            sklearn_available = True
+            from sklearn.cluster import KMeans  # noqa: F401
         except ImportError:
-            sklearn_available = False
+            pass
 
         # Create data with continuous y values that should cluster into 2 levels
         x = np.concatenate([

@@ -7,9 +7,12 @@ This module provides utilities to construct WaterFlow instances from:
 - Fitted experimental data
 """
 
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from python_magnetcooling.waterflow import WaterFlow
+
+if TYPE_CHECKING:
+    from python_magnetcooling.fitting import FlowPressureFit, PumpSpeedFit
 
 
 def from_flow_params(params: Dict[str, Any]) -> WaterFlow:

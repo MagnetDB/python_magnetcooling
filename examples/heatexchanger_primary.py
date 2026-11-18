@@ -12,6 +12,7 @@ from python_magnetrun.MagnetRun import MagnetRun
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
+# ruff: noqa: E402
 import pandas as pd
 from python_magnetrun.processing import filters as filtertools
 from python_magnetrun.processing import smoothers as smoothtools

@@ -291,16 +291,10 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     print(f"debitbrut: ofile={ofile}, nlevels={nlevels}")
 
     # Secondary Flow (debitbrut) analysis
-    qt0 = df.index.values[0]
 
-    qsymbol = "Q"
-    psymbol = "P"
-    punit = "P"
     from pint import UnitRegistry
 
     ureg = UnitRegistry()
-    qunit = ureg.meter**3 / ureg.hour
-    punit = ureg.megawatt
 
     # use pwlf to get threshold and value
     # TODO how to estimate the number of segment

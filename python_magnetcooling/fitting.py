@@ -54,10 +54,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 from scipy import optimize
+
+if TYPE_CHECKING:
+    from python_magnetcooling.waterflow import WaterFlow
 
 logger = logging.getLogger("magnetcooling.fitting")
 
