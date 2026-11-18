@@ -212,7 +212,6 @@ def compute(
 
             # download files
             files = []
-            total = 0
             nrecords = len(records)
             ithreshold = nrecords
             if nrecords > samples:
@@ -322,7 +321,7 @@ def compute(
                                     if debug:
                                         _Istats = result[Ikey].describe(include="all")
                                         print(
-                                            f"Rpmmax={_Rpmmax}, thresold={threshold} {Ikey}: {_Istats}, Field: {result['Field'].max()}"
+                                            f"Rpmmax={_Rpmmax}, threshold={threshold} {Ikey}: {_Istats}, Field: {result['Field'].max()}"
                                         )
                                         """ """
                                         import matplotlib.pyplot as plt
@@ -422,8 +421,6 @@ def compute(
                 )
                 flow_params["Pmin"]["value"] = params[0]
                 flow_params["Pmax"]["value"] = params[1]
-                P0 = flow_params["Pmin"]["value"]
-                Pmax = flow_params["Pmax"]["value"]
                 params = []
 
                 # correlation Pout

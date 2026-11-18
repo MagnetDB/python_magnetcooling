@@ -10,8 +10,9 @@ from typing import List
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from python_magnetrun.plotting.backend import get_backend
+from python_magnetrun.plotting.timeseries import plot_xy
 from python_magnetrun.processing.fit import find_eqn, fit
-from python_magnetrun.utils.plots import plot_df
 from sympy import Symbol
 from tabulate import tabulate
 
@@ -50,16 +51,20 @@ def stats(
         print(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
         print(f"result max: {result[Ikey].max()}")
 
-    plot_df(
-        filename,
-        df,
-        key1=Ikey,
-        key2=Okey,
-        fit=None,
-        show=show,
-        debug=debug,
-        wd=wd,
+    from pathlib import Path
+    b = get_backend("matplotlib")
+    fig = plot_xy(
+        df, [(Ikey, Okey)],
+        backend=b,
+        title=f"{filename}: {Okey}({Ikey})",
+        marker="o",
+        linestyle="none",
     )
+    b.finalize(fig, xlabel=Ikey)
+    if show:
+        b.show(fig)
+    else:
+        b.save(fig, Path(wd) / f"{filename}-{Ikey}_vs_{Okey}.png")
 
     if debug:
         stats = result[Okey].describe(include="all")
@@ -286,16 +291,10 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     print(f"debitbrut: ofile={ofile}, nlevels={nlevels}")
 
     # Secondary Flow (debitbrut) analysis
-    qt0 = df.index.values[0]
 
-    qsymbol = "Q"
-    psymbol = "P"
-    punit = "P"
     from pint import UnitRegistry
 
     ureg = UnitRegistry()
-    qunit = ureg.meter**3 / ureg.hour
-    punit = ureg.megawatt
 
     # use pwlf to get threshold and value
     # TODO how to estimate the number of segment

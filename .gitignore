@@ -153,3 +153,5 @@ M*.conf
 *.zip
 *.tar.*
 *.tgz
+
+.envrc

@@ -550,7 +550,8 @@ if __name__ == "__main__":
     parser.add_argument("--iplot", help="activate plot", action="store_true")
     parser.add_argument("--debug", help="activate debug mode", action="store_true")
     parser.add_argument("--nhelices", help="specify number of helices", type=int, default=14)
-    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
+    parser.add_argument("--assembly", dest="assembly", help="specify an assembly (ex. M8, M9,...)", default="M9")
+    parser.add_argument("--site", dest="assembly", help=argparse.SUPPRESS)
     # raw|filter|smooth post-traitement of data
     parser.add_argument(
         "--pre",
@@ -588,16 +589,16 @@ if __name__ == "__main__":
     if result:
         try:
             index = filename.index("_")
-            args.site = filename[0:index]
-            print("site detected: %s" % args.site)
+            args.assembly = filename[0:index]
+            print("assembly detected: %s" % args.assembly)
         except:
-            print("no site detected - use args.site argument instead")
+            print("no assembly detected - use args.assembly argument instead")
             pass
 
     from python_magnetrun.MagnetRun import MagnetRun
 
-    housing = args.site
-    mrun = MagnetRun.fromtxt(housing, args.site, args.input_file)
+    housing = args.assembly
+    mrun = MagnetRun.fromtxt(housing, args.assembly, args.input_file)
     insert = "tutut"  # mrun.getInsert()
 
     # TODO # Load geom cfg from json
@@ -645,8 +646,8 @@ if __name__ == "__main__":
     start_timestamp = mrun.getMData().getStartDate()
 
     # Add Power Data
-    mrun.getMData().addData("PH", "PH = UH * IH")
-    mrun.getMData().addData("PB", "PB = UB * IB")
+    mrun.getMData().addData("PH", "PH = UH * IH", symbol="P_H", unit="watt", label="Upper Magnet Power", description="Upper magnet electrical power")
+    mrun.getMData().addData("PB", "PB = UB * IB", symbol="P_B", unit="watt", label="Lower Magnet Power", description="Lower magnet electrical power")
 
     # use smoothed data instead of raw data
     smoothedkeys = [
@@ -681,9 +682,9 @@ if __name__ == "__main__":
 
     dkeys = mrun.getKeys()
 
-    mrun.getMData().addData("Flow", "Flow = FlowH + FlowH")
-    mrun.getMData().addData("Tin", "Tin = (TinH + TinH)/2.")
-    mrun.getMData().addData("HP", "HP = (HPH + HPH)/2.")
+    mrun.getMData().addData("Flow", "Flow = FlowH + FlowH", symbol="Q", unit="liter/second", label="Total Flow", description="Total cooling water flow rate")
+    mrun.getMData().addData("Tin", "Tin = (TinH + TinH)/2.", symbol="T", unit="degC", label="Inlet Temperature", description="Average cooling water inlet temperature")
+    mrun.getMData().addData("HP", "HP = (HPH + HPH)/2.", symbol="P", unit="megawatt", label="High Power", description="Average magnet high power")
 
     # extract data
     keys = [

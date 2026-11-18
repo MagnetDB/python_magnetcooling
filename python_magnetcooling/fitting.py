@@ -11,7 +11,7 @@ Physical Models
 
 1. Pump Speed vs Current:
    Vp(I) = Vpmax · (I/Imax)² + Vp0
-   
+
    Two methods available:
    - Simple quadratic fit (scipy): requires known Imax
    - Piecewise linear fit (pwlf): auto-detects Imax from breakpoint
@@ -29,23 +29,23 @@ Usage
 -----
 >>> import numpy as np
 >>> from python_magnetcooling.fitting import fit_hydraulic_system, build_waterflow
->>> 
+>>>
 >>> # Your experimental data (NumPy arrays)
 >>> current = np.array([...])
 >>> pump_speed = np.array([...])
 >>> flow_rate = np.array([...])
 >>> pressure = np.array([...])
 >>> back_pressure = np.array([...])
->>> 
+>>>
 >>> # Fit all curves
 >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
 ...     current, pump_speed, flow_rate, pressure, back_pressure,
 ...     imax=28000, method="simple"
 ... )
->>> 
+>>>
 >>> # Create WaterFlow object
 >>> waterflow = build_waterflow(pump_fit, flow_pressure_fit)
->>> 
+>>>
 >>> # Use it
 >>> flow_at_20kA = waterflow.flow_rate(20000)
 """
@@ -54,12 +54,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
 from scipy import optimize
 
-from .waterflow import WaterFlow
+if TYPE_CHECKING:
+    from python_magnetcooling.waterflow import WaterFlow
 
 logger = logging.getLogger("magnetcooling.fitting")
 
@@ -331,14 +332,14 @@ class FitMetrics:
     Notes
     -----
     **Interpretation Guidelines:**
-    
+
     - RMSE/MAE: Compare to typical data magnitude. <5% is excellent, <10% is good.
     - R²: >0.95 is excellent, >0.90 is good, <0.80 suggests poor fit.
     - MAPE: <5% is excellent, <10% is good, >20% suggests refit needed.
     - max_error: Check if worst deviation is acceptable for application.
-    
+
     **When to Refit:**
-    
+
     - R² < 0.90 or RMSE > 10% of data range
     - Systematic patterns in residuals (not random scatter)
     - Physical constraints violated (e.g., negative flow rates)
@@ -511,9 +512,7 @@ def _validate_method(method: str) -> None:
     """
     valid_methods = {"simple", "piecewise"}
     if method not in valid_methods:
-        raise ValueError(
-            f"method must be one of {valid_methods}, got '{method}'"
-        )
+        raise ValueError(f"method must be one of {valid_methods}, got '{method}'")
 
 
 def _filter_by_threshold(
@@ -635,34 +634,31 @@ def _compute_fit_statistics(
 
 def _extract_piecewise_equations(pwlf_model) -> list:
     """
-    Extract symbolic equations from a pwlf piecewise linear fit.
+    Extract the polynomial of each segment of a pwlf piecewise fit as sympy.
 
-    This is a port of the find_eqn() function from python_magnetrun.
-    Requires sympy for symbolic manipulation.
+    pwlf does not store one polynomial per segment: its ``beta`` holds the
+    first segment's polynomial plus truncated-power terms ``(x - b_k)^j`` for
+    each breakpoint. Each segment's polynomial is therefore recovered by an
+    exact polynomial fit of ``pwlf_model.predict`` on points inside that
+    segment.
 
     Parameters
     ----------
     pwlf_model : pwlf.PiecewiseLinFit
-        Fitted piecewise linear model.
+        Fitted piecewise model.
 
     Returns
     -------
     list
-        List of sympy expressions, one for each segment.
+        One sympy expression in ``x`` per segment, ``sum c_j x^j``.
 
     Raises
     ------
     ImportError
         If sympy is not available.
-
-    Notes
-    -----
-    This function uses sympy to create symbolic representations of each
-    piecewise segment. For a degree-2 polynomial, the equation will be
-    of the form: a*x² + b*x + c
     """
     try:
-        from sympy import Symbol, symbols
+        from sympy import Float, Symbol
     except ImportError as e:
         raise ImportError(
             "sympy is required for symbolic equation extraction. "
@@ -670,26 +666,24 @@ def _extract_piecewise_equations(pwlf_model) -> list:
         ) from e
 
     x = Symbol("x")
-    n_segments = pwlf_model.n_segments
     degree = pwlf_model.degree
+    breaks = np.asarray(pwlf_model.fit_breaks, dtype=float)
 
     equations = []
-
-    # Extract coefficients for each segment
-    # pwlf stores beta coefficients for each polynomial term
-    for seg in range(n_segments):
-        # Build polynomial equation
-        # For degree 2: beta[0] + beta[1]*x + beta[2]*x^2
-        equation = 0
-        for deg in range(degree + 1):
-            idx = seg * (degree + 1) + deg
-            if idx < len(pwlf_model.beta):
-                coeff = pwlf_model.beta[idx]
-                equation += coeff * (x ** deg)
-
-        equations.append(equation)
+    for lo, hi in zip(breaks[:-1], breaks[1:]):
+        # Points strictly inside the segment (polyfit scales its columns itself).
+        xs =np.linspace(lo, hi, 4 * (degree + 1) + 2)[1:-1]
+        coeffs = np.polynomial.polynomial.polyfit(xs, pwlf_model.predict(xs), degree)
+        equations.append(sum(Float(c) * x**j for j, c in enumerate(coeffs)))
 
     return equations
+
+
+def _pump_speed_model(
+    current: np.ndarray, vpmax: float, vp0: float, imax: float
+) -> np.ndarray:
+    """Pump speed ``Vpmax·(min(I, Imax)/Imax)² + Vp0`` [rpm], the clamped WaterFlow model."""
+    return vpmax * (np.minimum(np.asarray(current, dtype=float), imax) / imax) ** 2 + vp0
 
 
 # =============================================================================
@@ -705,10 +699,13 @@ def fit_pump_speed_simple(
     """
     Fit pump speed vs current using simple quadratic model.
 
-    Model: Vp(I) = Vpmax·(I/Imax)² + Vp0
+    Model: Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0, the WaterFlow model:
+    the speed saturates at Vpmax + Vp0 above Imax.
 
     Uses scipy.optimize.curve_fit with a fixed Imax value. This is the
-    simpler method that requires knowing Imax in advance.
+    simpler method that requires knowing Imax in advance. Samples above
+    Imax are fitted to the saturated speed, so they do not bias Vpmax and
+    Vp0.
 
     Parameters
     ----------
@@ -755,14 +752,12 @@ def fit_pump_speed_simple(
 
     # Define the pump speed model
     def vpump_func(x: np.ndarray, vpmax: float, vp0: float) -> np.ndarray:
-        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
-        return vpmax * (x / imax) ** 2 + vp0
+        """Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0"""
+        return _pump_speed_model(x, vpmax, vp0, imax)
 
     try:
         # Perform curve fitting
-        params, params_covariance = optimize.curve_fit(
-            vpump_func, current, pump_speed
-        )
+        params, params_covariance = optimize.curve_fit(vpump_func, current, pump_speed)
     except RuntimeError as e:
         raise RuntimeError(
             f"Curve fitting failed to converge: {e}. "
@@ -834,8 +829,11 @@ def fit_pump_speed_piecewise(
     Returns
     -------
     PumpSpeedFit
-        Fitted parameters with imax_detected=True if breakpoint detection
-        succeeded. Includes symbolic equations and breakpoints.
+        ``vpmax`` (speed rise above Vp0, as in WaterFlow), ``vp0`` and
+        ``fit_result`` from the clamped model fitted at the detected Imax
+        (:func:`fit_pump_speed_simple`); ``imax_detected=True`` if the
+        2-segment breakpoint was used; ``breakpoints`` and, when sympy is
+        available, one symbolic polynomial per piecewise segment.
 
     Raises
     ------
@@ -862,8 +860,12 @@ def fit_pump_speed_piecewise(
     -----
     The piecewise fitting tries segments sequentially:
     1. First tries 1 segment (simple polynomial)
-    2. If the fit at the final current is poor (>10 rpm error), tries 2 segments
+    2. If the fit at the highest current is poor (>10 rpm error), tries 2 segments
     3. With 2 segments, the breakpoint is interpreted as Imax
+    4. Vpmax and Vp0 are then fitted with the clamped model at that Imax
+
+    The samples may be in any order (e.g. time order); they are sorted by
+    current first.
 
     See Also
     --------
@@ -890,9 +892,13 @@ def fit_pump_speed_piecewise(
         f"degree={degree}"
     )
 
+    # Sort by current: the end-point check below needs the highest current last.
+    order = np.argsort(current, kind="stable")
+    current = np.asarray(current, dtype=float)[order]
+    pump_speed = np.asarray(pump_speed, dtype=float)[order]
+
     # Try segments sequentially
     best_fit = None
-    best_equations = None
 
     for n_segments in range(1, max_segments + 1):
         logger.debug(f"Trying {n_segments} segment(s)...")
@@ -907,35 +913,16 @@ def fit_pump_speed_piecewise(
         else:
             my_pwlf.fit(n_segments)
 
-        # Extract symbolic equations
-        try:
-            equations = _extract_piecewise_equations(my_pwlf)
-        except ImportError:
-            logger.warning("sympy not available, skipping equation extraction")
-            equations = None
+        # Check fit quality at the highest current
+        final_current = current[-1]
+        error = abs(float(my_pwlf.predict(final_current)[0]) - pump_speed[-1])
+        logger.debug(
+            f"Fit quality check: error at I={final_current:.0f} A is {error:.1f} rpm"
+        )
 
-        # Check fit quality at the final point
-        if equations is not None:
-            from sympy import Symbol
-            x = Symbol("x")
-            final_current = current[-1]
-            final_speed = pump_speed[-1]
-            predicted_speed = float(equations[0].evalf(subs={x: final_current}))
-            error = abs(predicted_speed - final_speed)
-
-            logger.debug(
-                f"Fit quality check: error at I={final_current:.0f} A is {error:.1f} rpm"
-            )
-
-            # If error is acceptable or this is the last attempt, use this fit
-            if error <= 10 or n_segments == max_segments:
-                best_fit = my_pwlf
-                best_equations = equations
-                break
-        else:
-            # No equations available, use this fit
+        # If error is acceptable or this is the last attempt, use this fit
+        if error <= 10 or n_segments == max_segments:
             best_fit = my_pwlf
-            best_equations = None
             break
 
     if best_fit is None:
@@ -943,7 +930,13 @@ def fit_pump_speed_piecewise(
 
     # Extract parameters
     n_segments = best_fit.n_segments
-    breakpoints_list = list(best_fit.fit_breaks)
+    breakpoints_list = [float(b) for b in best_fit.fit_breaks]
+
+    try:
+        equations = _extract_piecewise_equations(best_fit)
+    except ImportError:
+        logger.warning("sympy not available, skipping equation extraction")
+        equations = None
 
     # Determine Imax
     if n_segments == 2:
@@ -957,31 +950,24 @@ def fit_pump_speed_piecewise(
         imax_detected = False
         logger.info(f"Using data maximum as Imax: {detected_imax:.0f} A")
 
-    # Evaluate Vp0 and Vpmax from the equation
-    if best_equations is not None:
-        from sympy import Symbol
-        x = Symbol("x")
-        vp0 = float(best_equations[0].evalf(subs={x: 0}))
-        vpmax = float(best_equations[0].evalf(subs={x: detected_imax}))
-    else:
-        # Fallback: evaluate using pwlf predict
-        vp0 = float(best_fit.predict(0))
-        vpmax = float(best_fit.predict(detected_imax))
+    # Vpmax (rise above Vp0) and Vp0 from the clamped model at that Imax: the
+    # piecewise polynomials have a linear term the WaterFlow model does not have.
+    clamped = fit_pump_speed_simple(current, pump_speed, imax=detected_imax)
 
     logger.info(
-        f"Pump speed fit complete (piecewise): Vpmax={vpmax:.2f} rpm, "
-        f"Vp0={vp0:.2f} rpm, Imax={detected_imax:.0f} A (detected={imax_detected}), "
-        f"segments={n_segments}"
+        f"Pump speed fit complete (piecewise): Vpmax={clamped.vpmax:.2f} rpm, "
+        f"Vp0={clamped.vp0:.2f} rpm, Imax={detected_imax:.0f} A "
+        f"(detected={imax_detected}), segments={n_segments}"
     )
 
     return PumpSpeedFit(
-        vpmax=vpmax,
-        vp0=vp0,
+        vpmax=clamped.vpmax,
+        vp0=clamped.vp0,
         imax=detected_imax,
         imax_detected=imax_detected,
-        fit_result=None,  # pwlf doesn't provide scipy-style covariance
+        fit_result=clamped.fit_result,
         breakpoints=breakpoints_list,
-        equations=best_equations,
+        equations=equations,
     )
 
 
@@ -1000,7 +986,8 @@ def fit_flow_rate(
 
     Model: F(I) = F0 + Fmax · Vp(I) / (Vpmax + Vp0)
 
-    where Vp(I) is the pump speed model from pump_fit.
+    where Vp(I) is the clamped pump speed model from pump_fit, so the flow
+    saturates at F0 + Fmax above Imax (as in WaterFlow).
 
     This function fits the flow rate characteristic curve based on the
     already-fitted pump speed parameters. The flow rate is assumed to be
@@ -1031,12 +1018,12 @@ def fit_flow_rate(
     --------
     >>> import numpy as np
     >>> from python_magnetcooling.fitting import fit_pump_speed_simple, fit_flow_rate
-    >>> 
+    >>>
     >>> # First fit pump speed
     >>> current = np.linspace(1000, 28000, 100)
     >>> pump_speed = 2840 * (current / 28000)**2 + 1000
     >>> pump_fit = fit_pump_speed_simple(current, pump_speed, imax=28000)
-    >>> 
+    >>>
     >>> # Then fit flow rate
     >>> flow = 140 * pump_speed / (2840 + 1000)
     >>> flow_fit = fit_flow_rate(current, flow, pump_fit)
@@ -1061,8 +1048,8 @@ def fit_flow_rate(
 
     # Define pump speed function
     def vpump_func(x: np.ndarray) -> np.ndarray:
-        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
-        return vpmax * (x / imax) ** 2 + vp0
+        """Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0"""
+        return _pump_speed_model(x, vpmax, vp0, imax)
 
     # Define flow rate model
     def flow_func(x: np.ndarray, f0: float, fmax: float) -> np.ndarray:
@@ -1072,13 +1059,9 @@ def fit_flow_rate(
 
     try:
         # Perform curve fitting
-        params, params_covariance = optimize.curve_fit(
-            flow_func, current, flow_rate
-        )
+        params, params_covariance = optimize.curve_fit(flow_func, current, flow_rate)
     except RuntimeError as e:
-        raise RuntimeError(
-            f"Flow rate curve fitting failed to converge: {e}"
-        ) from e
+        raise RuntimeError(f"Flow rate curve fitting failed to converge: {e}") from e
 
     f0, fmax = params
 
@@ -1111,7 +1094,8 @@ def fit_pressure(
 
     Model: P(I) = Pmin + Pmax · [Vp(I) / (Vpmax + Vp0)]²
 
-    where Vp(I) is the pump speed model from pump_fit.
+    where Vp(I) is the clamped pump speed model from pump_fit, so the
+    pressure saturates at Pmin + Pmax above Imax (as in WaterFlow).
 
     This function fits the pressure characteristic curve based on the
     already-fitted pump speed parameters. The pressure is assumed to be
@@ -1142,12 +1126,12 @@ def fit_pressure(
     --------
     >>> import numpy as np
     >>> from python_magnetcooling.fitting import fit_pump_speed_simple, fit_pressure
-    >>> 
+    >>>
     >>> # First fit pump speed
     >>> current = np.linspace(1000, 28000, 100)
     >>> pump_speed = 2840 * (current / 28000)**2 + 1000
     >>> pump_fit = fit_pump_speed_simple(current, pump_speed, imax=28000)
-    >>> 
+    >>>
     >>> # Then fit pressure
     >>> vp_ratio = pump_speed / (2840 + 1000)
     >>> pressure = 4 + 22 * vp_ratio**2
@@ -1173,8 +1157,8 @@ def fit_pressure(
 
     # Define pump speed function
     def vpump_func(x: np.ndarray) -> np.ndarray:
-        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
-        return vpmax * (x / imax) ** 2 + vp0
+        """Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0"""
+        return _pump_speed_model(x, vpmax, vp0, imax)
 
     # Define pressure model
     def pressure_func(x: np.ndarray, pmin: float, pmax: float) -> np.ndarray:
@@ -1184,13 +1168,9 @@ def fit_pressure(
 
     try:
         # Perform curve fitting
-        params, params_covariance = optimize.curve_fit(
-            pressure_func, current, pressure
-        )
+        params, params_covariance = optimize.curve_fit(pressure_func, current, pressure)
     except RuntimeError as e:
-        raise RuntimeError(
-            f"Pressure curve fitting failed to converge: {e}"
-        ) from e
+        raise RuntimeError(f"Pressure curve fitting failed to converge: {e}") from e
 
     pmin, pmax = params
 
@@ -1339,7 +1319,7 @@ def fit_hydraulic_system(
     --------
     >>> import numpy as np
     >>> from python_magnetcooling.fitting import fit_hydraulic_system
-    >>> 
+    >>>
     >>> # Generate synthetic data
     >>> np.random.seed(42)
     >>> current = np.linspace(500, 28000, 200)
@@ -1348,13 +1328,13 @@ def fit_hydraulic_system(
     >>> flow = 140 * vp_ratio + np.random.normal(0, 1, 200)
     >>> pressure = 4 + 22 * vp_ratio**2 + np.random.normal(0, 0.5, 200)
     >>> back_pressure = np.full(200, 4.0) + np.random.normal(0, 0.1, 200)
-    >>> 
+    >>>
     >>> # Fit all curves at once
     >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
     ...     current, pump_speed, flow, pressure, back_pressure,
     ...     imax=28000, method="simple", current_threshold=300
     ... )
-    >>> 
+    >>>
     >>> print(f"Pump: Vpmax={pump_fit.vpmax:.1f} rpm, Vp0={pump_fit.vp0:.1f} rpm")
     >>> print(f"Flow: F0={flow_pressure_fit.f0:.1f} l/s, Fmax={flow_pressure_fit.fmax:.1f} l/s")
     >>> print(f"Pressure: Pmin={flow_pressure_fit.pmin:.1f} bar, Pmax={flow_pressure_fit.pmax:.1f} bar")
@@ -1387,7 +1367,13 @@ def fit_hydraulic_system(
     )
 
     # Filter data by current threshold
-    current_filtered, pump_speed_filtered, flow_rate_filtered, pressure_filtered, back_pressure_filtered = _filter_by_threshold(
+    (
+        current_filtered,
+        pump_speed_filtered,
+        flow_rate_filtered,
+        pressure_filtered,
+        back_pressure_filtered,
+    ) = _filter_by_threshold(
         current, current_threshold, pump_speed, flow_rate, pressure, back_pressure
     )
 
@@ -1427,9 +1413,12 @@ def fit_hydraulic_system(
         pressure_fit=pressure_fit,
     )
 
+    pump_r2 = (
+        f"{pump_fit.fit_result.r_squared:.4f}" if pump_fit.fit_result else "N/A"
+    )
     logger.info(
         f"Hydraulic system fitting complete. "
-        f"Pump R²={pump_fit.fit_result.r_squared if pump_fit.fit_result else 'N/A':.4f}, "
+        f"Pump R²={pump_r2}, "
         f"Flow R²={flow_fit.r_squared:.4f}, "
         f"Pressure R²={pressure_fit.r_squared:.4f}"
     )
@@ -1502,12 +1491,12 @@ def fit_hysteresis_parameters(
     >>> import numpy as np
     >>> import pandas as pd
     >>> from python_magnetcooling.fitting import fit_hysteresis_parameters
-    >>> 
+    >>>
     >>> # Load magnet run data
     >>> df = pd.read_csv("magnet_data.csv")
     >>> power = df["Pmagnet"].values  # MW
     >>> flow = df["flow_secondary"].values  # m³/h (secondary cooling loop)
-    >>> 
+    >>>
     >>> # Fit hysteresis model with 3 levels
     >>> hyst_fit = fit_hysteresis_parameters(
     ...     power, flow,
@@ -1515,7 +1504,7 @@ def fit_hysteresis_parameters(
     ...     clean_outliers=True,
     ...     verbose=True
     ... )
-    >>> 
+    >>>
     >>> print(f"Thresholds: {hyst_fit.thresholds}")
     >>> print(f"Low values: {hyst_fit.low_values}")
     >>> print(f"High values: {hyst_fit.high_values}")
@@ -1567,6 +1556,7 @@ def fit_hysteresis_parameters(
 
     # Create DataFrame for processing
     import pandas as pd
+
     df = pd.DataFrame({"Pmagnet": power, "flow_secondary": flow_rate})
 
     # Clean outliers if requested
@@ -1597,7 +1587,11 @@ def fit_hysteresis_parameters(
     from .hysteresis import estimate_hysteresis_parameters
 
     result = estimate_hysteresis_parameters(
-        df_clean, x_col="Pmagnet", y_col="flow_secondary", n_levels=n_levels, verbose=verbose
+        df_clean,
+        x_col="Pmagnet",
+        y_col="flow_secondary",
+        n_levels=n_levels,
+        verbose=verbose,
     )
 
     # Extract results
@@ -1660,7 +1654,7 @@ def build_waterflow(
     --------
     >>> import numpy as np
     >>> from python_magnetcooling.fitting import fit_hydraulic_system, build_waterflow
-    >>> 
+    >>>
     >>> # Generate and fit synthetic data
     >>> current = np.linspace(1000, 28000, 100)
     >>> pump_speed = 2840 * (current / 28000)**2 + 1000
@@ -1668,17 +1662,17 @@ def build_waterflow(
     >>> flow = 140 * vp_ratio
     >>> pressure = 4 + 22 * vp_ratio**2
     >>> back_pressure = np.full(100, 4.0)
-    >>> 
+    >>>
     >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
     ...     current, pump_speed, flow, pressure, back_pressure,
     ...     imax=28000, method="simple"
     ... )
-    >>> 
+    >>>
     >>> # Build WaterFlow object
     >>> waterflow = build_waterflow(pump_fit, flow_pressure_fit)
     >>> print(f"Max flow: {waterflow.flow_max:.1f} l/s")
     >>> print(f"Max pressure: {waterflow.pressure_max:.1f} bar")
-    >>> 
+    >>>
     >>> # Use it for calculations
     >>> flow_at_20kA = waterflow.flow_rate(20000)
     >>> print(f"Flow at 20 kA: {flow_at_20kA:.2f} m³/s")
@@ -1718,7 +1712,7 @@ def build_waterflow_with_hysteresis(
     pump_fit: PumpSpeedFit,
     flow_pressure_fit: FlowPressureFit,
     hyst_fit: HysteresisFit,
-) -> WaterFlow:
+) -> "WaterFlow":
     """
     Construct a WaterFlow object with hysteresis parameters from fitted data.
 
@@ -1749,24 +1743,24 @@ def build_waterflow_with_hysteresis(
     ...     fit_hysteresis_parameters,
     ...     build_waterflow_with_hysteresis
     ... )
-    >>> 
+    >>>
     >>> # Fit hydraulic system
     >>> pump_fit, flow_pressure_fit = fit_hydraulic_system(
     ...     current, pump_speed, flow, pressure, back_pressure,
     ...     imax=28000, method="simple"
     ... )
-    >>> 
+    >>>
     >>> # Fit hysteresis from power/flow data
     >>> hyst_fit = fit_hysteresis_parameters(power, flow_rate, n_levels=3)
-    >>> 
+    >>>
     >>> # Build complete WaterFlow object
     >>> waterflow = build_waterflow_with_hysteresis(
     ...     pump_fit, flow_pressure_fit, hyst_fit
     ... )
-    >>> 
+    >>>
     >>> # Use standard methods
     >>> flow_at_20kA = waterflow.flow_rate(20000)
-    >>> 
+    >>>
     >>> # Use hysteresis method
     >>> flow_at_10MW = waterflow.debitbrut(10.0)  # MW -> returns secondary flow in m³/h
 
@@ -1811,9 +1805,7 @@ def build_waterflow_with_hysteresis(
 # ============================================================================
 
 
-def _compute_metrics_from_arrays(
-    y_true: np.ndarray, y_pred: np.ndarray
-) -> FitMetrics:
+def _compute_metrics_from_arrays(y_true: np.ndarray, y_pred: np.ndarray) -> FitMetrics:
     """
     Compute fit quality metrics from true and predicted values.
 
@@ -1903,11 +1895,11 @@ def compute_pump_fit_metrics(
     Notes
     -----
     **Typical acceptable values for pump fits:**
-    
+
     - RMSE: <20 rpm for standard pumps
     - R²: >0.95 is excellent, >0.90 is acceptable
     - MAE: <15 rpm indicates good fit
-    
+
     Consider refit if R² < 0.90 or if residuals show systematic patterns.
     """
     # Reconstruct fitted pump speed
@@ -1951,7 +1943,7 @@ def compute_flow_fit_metrics(
     Notes
     -----
     **Typical acceptable values:**
-    
+
     - RMSE: <2 l/s for most systems
     - R²: >0.90 is good
     - Consider refit if MAPE > 10%
@@ -2001,16 +1993,17 @@ def compute_pressure_fit_metrics(
     Notes
     -----
     **Typical acceptable values:**
-    
+
     - RMSE: <0.5 bar is excellent, <1.0 bar is acceptable
     - R²: >0.95 is good
     - Check that fitted Pmin and Pmax are physically reasonable
     """
     # Reconstruct fitted pressure
     vp_fit = pump_fit.vpmax * (current / pump_fit.imax) ** 2 + pump_fit.vp0
-    pressure_fit = flow_pressure_fit.pmin + flow_pressure_fit.pmax * (
-        vp_fit / (pump_fit.vpmax + pump_fit.vp0)
-    ) ** 2
+    pressure_fit = (
+        flow_pressure_fit.pmin
+        + flow_pressure_fit.pmax * (vp_fit / (pump_fit.vpmax + pump_fit.vp0)) ** 2
+    )
 
     return _compute_metrics_from_arrays(pressure, pressure_fit)
 
@@ -2053,16 +2046,16 @@ def compute_hysteresis_fit_metrics(
     Notes
     -----
     **Interpretation for hysteresis models:**
-    
+
     - R² > 0.90: Excellent fit, clear hysteresis behavior
     - R² 0.80-0.90: Good fit, hysteresis present but with noise
     - R² < 0.80: Poor fit, consider:
       * Different number of levels
       * Better outlier removal
       * Data may not exhibit clear hysteresis
-    
+
     **When to refit:**
-    
+
     - New data collected that shows different behavior
     - Systematic deviations in specific power ranges
     - Control system parameters changed
@@ -2121,16 +2114,16 @@ def compute_all_hydraulic_metrics(
     >>> metrics = compute_all_hydraulic_metrics(
     ...     current, pump_speed, flow, pressure, pump_fit, flow_pressure_fit
     ... )
-    >>> 
+    >>>
     >>> print("=== Fit Quality Summary ===")
     >>> for name, m in metrics.items():
     ...     print(f"\\n{name.upper()}:")
     ...     print(f"  RMSE = {m.rmse:.3f}, R² = {m.r_squared:.4f}")
     ...     if not m.is_good_fit():
     ...         print(f"  ⚠ WARNING: {name} fit quality is low!")
-    >>> 
+    >>>
     >>> # Check if any fit needs improvement
-    >>> poor_fits = [name for name, m in metrics.items() 
+    >>> poor_fits = [name for name, m in metrics.items()
     ...              if not m.is_good_fit(r_squared_threshold=0.90)]
     >>> if poor_fits:
     ...     print(f"\\nConsider refitting: {', '.join(poor_fits)}")
@@ -2142,7 +2135,9 @@ def compute_all_hydraulic_metrics(
     """
     return {
         "pump": compute_pump_fit_metrics(current, pump_speed, pump_fit),
-        "flow": compute_flow_fit_metrics(current, flow_rate, pump_fit, flow_pressure_fit),
+        "flow": compute_flow_fit_metrics(
+            current, flow_rate, pump_fit, flow_pressure_fit
+        ),
         "pressure": compute_pressure_fit_metrics(
             current, pressure, pump_fit, flow_pressure_fit
         ),
@@ -2200,29 +2195,47 @@ def plot_pump_fit(
         logger.warning("matplotlib not available. Cannot create plot.")
         return
 
-    # Generate fitted curve
+    # Generate fitted curve (saturates above Imax, as in WaterFlow)
     i_range = np.linspace(current.min(), current.max(), 200)
-    vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
+    vp_fit = _pump_speed_model(i_range, pump_fit.vpmax, pump_fit.vp0, pump_fit.imax)
 
     # Create plot
     fig, ax = plt.subplots(figsize=figsize)
 
     # Raw data
-    ax.plot(current, pump_speed, 'b.', markersize=5, alpha=0.5, label='Measured data')
+    ax.plot(current, pump_speed, "b.", markersize=5, alpha=0.5, label="Measured data")
 
     # Fitted curve
-    ax.plot(i_range, vp_fit, 'r-', linewidth=2, label='Fitted model')
+    ax.plot(i_range, vp_fit, "r-", linewidth=2, label="Fitted model")
 
     # Mark Imax if available
     if pump_fit.imax:
-        ax.axvline(x=pump_fit.imax, color='g', linestyle='--', alpha=0.7,
-                  linewidth=1.5, label=f'Imax = {pump_fit.imax:.0f} A')
+        ax.axvline(
+            x=pump_fit.imax,
+            color="g",
+            linestyle="--",
+            alpha=0.7,
+            linewidth=1.5,
+            label=f"Imax = {pump_fit.imax:.0f} A",
+        )
 
     # Mark Vp0 and Vpmax
-    ax.axhline(y=pump_fit.vp0, color='orange', linestyle=':', alpha=0.7,
-              linewidth=1, label=f'Vp0 = {pump_fit.vp0:.1f} rpm')
-    ax.axhline(y=pump_fit.vpmax + pump_fit.vp0, color='purple', linestyle=':', alpha=0.7,
-              linewidth=1, label=f'Vpmax = {pump_fit.vpmax + pump_fit.vp0:.1f} rpm')
+    ax.axhline(
+        y=pump_fit.vp0,
+        color="orange",
+        linestyle=":",
+        alpha=0.7,
+        linewidth=1,
+        label=f"Vp0 = {pump_fit.vp0:.1f} rpm",
+    )
+    ax.axhline(
+        y=pump_fit.vpmax + pump_fit.vp0,
+        color="purple",
+        linestyle=":",
+        alpha=0.7,
+        linewidth=1,
+        label=f"Vp0 + Vpmax = {pump_fit.vpmax + pump_fit.vp0:.1f} rpm",
+    )
 
     ax.set_xlabel(xlabel, fontsize=11)
     ax.set_ylabel(ylabel, fontsize=11)
@@ -2230,14 +2243,14 @@ def plot_pump_fit(
     ax.grid(True, alpha=0.3)
 
     if title:
-        ax.set_title(title, fontsize=13, fontweight='bold')
+        ax.set_title(title, fontsize=13, fontweight="bold")
     else:
-        ax.set_title('Pump Speed vs Current', fontsize=13, fontweight='bold')
+        ax.set_title("Pump Speed vs Current", fontsize=13, fontweight="bold")
 
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
         logger.info(f"Plot saved to {save_path}")
 
     if show:
@@ -2296,9 +2309,9 @@ def plot_flow_pressure_fit(
         logger.warning("matplotlib not available. Cannot create plot.")
         return
 
-    # Generate fitted curves
+    # Generate fitted curves (saturate above Imax, as in WaterFlow)
     i_range = np.linspace(current.min(), current.max(), 200)
-    vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
+    vp_fit = _pump_speed_model(i_range, pump_fit.vpmax, pump_fit.vp0, pump_fit.imax)
 
     # Flow: F(I) = F0 + Fmax * Vp(I)/(Vpmax + Vp0)
     flow_fit = flow_pressure_fit.f0 + flow_pressure_fit.fmax * vp_fit / (
@@ -2306,52 +2319,80 @@ def plot_flow_pressure_fit(
     )
 
     # Pressure: P(I) = Pmin + Pmax * [Vp(I)/(Vpmax + Vp0)]^2
-    pressure_fit = flow_pressure_fit.pmin + flow_pressure_fit.pmax * (
-        vp_fit / (pump_fit.vpmax + pump_fit.vp0)
-    ) ** 2
+    pressure_fit = (
+        flow_pressure_fit.pmin
+        + flow_pressure_fit.pmax * (vp_fit / (pump_fit.vpmax + pump_fit.vp0)) ** 2
+    )
 
     # Create subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
 
     # Plot 1: Flow Rate
-    ax1.plot(current, flow_rate, 'b.', markersize=5, alpha=0.5, label='Measured')
-    ax1.plot(i_range, flow_fit, 'r-', linewidth=2, label='Fitted model')
-    ax1.axhline(y=flow_pressure_fit.f0, color='orange', linestyle=':', alpha=0.7,
-               linewidth=1, label=f'F0 = {flow_pressure_fit.f0:.2f} l/s')
-    ax1.axhline(y=flow_pressure_fit.f0 + flow_pressure_fit.fmax, color='purple',
-               linestyle=':', alpha=0.7, linewidth=1,
-               label=f'Fmax = {flow_pressure_fit.fmax:.2f} l/s')
+    ax1.plot(current, flow_rate, "b.", markersize=5, alpha=0.5, label="Measured")
+    ax1.plot(i_range, flow_fit, "r-", linewidth=2, label="Fitted model")
+    ax1.axhline(
+        y=flow_pressure_fit.f0,
+        color="orange",
+        linestyle=":",
+        alpha=0.7,
+        linewidth=1,
+        label=f"F0 = {flow_pressure_fit.f0:.2f} l/s",
+    )
+    ax1.axhline(
+        y=flow_pressure_fit.f0 + flow_pressure_fit.fmax,
+        color="purple",
+        linestyle=":",
+        alpha=0.7,
+        linewidth=1,
+        label=f"Fmax = {flow_pressure_fit.fmax:.2f} l/s",
+    )
     ax1.set_xlabel(xlabel, fontsize=11)
-    ax1.set_ylabel('Flow Rate (l/s)', fontsize=11)
+    ax1.set_ylabel("Flow Rate (l/s)", fontsize=11)
     ax1.legend(fontsize=9)
     ax1.grid(True, alpha=0.3)
-    ax1.set_title('Flow Rate vs Current', fontsize=12, fontweight='bold')
+    ax1.set_title("Flow Rate vs Current", fontsize=12, fontweight="bold")
 
     # Plot 2: Pressure
-    ax2.plot(current, pressure, 'b.', markersize=5, alpha=0.5, label='Measured')
-    ax2.plot(i_range, pressure_fit, 'r-', linewidth=2, label='Fitted model')
-    ax2.axhline(y=flow_pressure_fit.pmin, color='orange', linestyle=':', alpha=0.7,
-               linewidth=1, label=f'Pmin = {flow_pressure_fit.pmin:.2f} bar')
-    ax2.axhline(y=flow_pressure_fit.pmin + flow_pressure_fit.pmax, color='purple',
-               linestyle=':', alpha=0.7, linewidth=1,
-               label=f'Pmax = {flow_pressure_fit.pmax:.2f} bar')
+    ax2.plot(current, pressure, "b.", markersize=5, alpha=0.5, label="Measured")
+    ax2.plot(i_range, pressure_fit, "r-", linewidth=2, label="Fitted model")
+    ax2.axhline(
+        y=flow_pressure_fit.pmin,
+        color="orange",
+        linestyle=":",
+        alpha=0.7,
+        linewidth=1,
+        label=f"Pmin = {flow_pressure_fit.pmin:.2f} bar",
+    )
+    ax2.axhline(
+        y=flow_pressure_fit.pmin + flow_pressure_fit.pmax,
+        color="purple",
+        linestyle=":",
+        alpha=0.7,
+        linewidth=1,
+        label=f"Pmax = {flow_pressure_fit.pmax:.2f} bar",
+    )
     if flow_pressure_fit.back_pressure:
-        ax2.axhline(y=flow_pressure_fit.back_pressure.mean, color='green',
-                   linestyle='--', alpha=0.7, linewidth=1,
-                   label=f'Pback = {flow_pressure_fit.back_pressure.mean:.2f} bar')
+        ax2.axhline(
+            y=flow_pressure_fit.back_pressure,
+            color="green",
+            linestyle="--",
+            alpha=0.7,
+            linewidth=1,
+            label=f"Pback = {flow_pressure_fit.back_pressure:.2f} bar",
+        )
     ax2.set_xlabel(xlabel, fontsize=11)
-    ax2.set_ylabel('Pressure (bar)', fontsize=11)
+    ax2.set_ylabel("Pressure (bar)", fontsize=11)
     ax2.legend(fontsize=9)
     ax2.grid(True, alpha=0.3)
-    ax2.set_title('Pressure vs Current', fontsize=12, fontweight='bold')
+    ax2.set_title("Pressure vs Current", fontsize=12, fontweight="bold")
 
     if title:
-        fig.suptitle(title, fontsize=14, fontweight='bold')
+        fig.suptitle(title, fontsize=14, fontweight="bold")
 
     plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
         logger.info(f"Plot saved to {save_path}")
 
     if show:
@@ -2413,6 +2454,7 @@ def plot_hysteresis_fit(
 
     # Create DataFrame for compatibility with hysteresis plotting
     import pandas as pd
+
     df = pd.DataFrame({"x": power, "y": flow_rate})
 
     # Use hysteresis module's plotting function

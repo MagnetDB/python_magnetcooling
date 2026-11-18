@@ -661,7 +661,6 @@ def refine_thresholds_with_hysteresis_loop(df, x_col="x", y_col="y"):
     y = df[y_col].values
 
     # Sort by x to identify ascending portions
-    sorted_indices = np.argsort(x)
 
     # Find turning points (local extrema in x)
     dx = np.diff(x)

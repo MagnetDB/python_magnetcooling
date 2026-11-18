@@ -9,9 +9,9 @@ This module handles:
 """
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from typing import List
-from warnings import simplefilter
 
 import numpy as np
 from pint import Quantity, UnitRegistry
@@ -27,7 +27,6 @@ Quantity([])
 ureg = UnitRegistry()
 ureg.default_system = "SI"
 ureg.autoconvert_offset_to_baseunit = True
-
 
 
 @dataclass
@@ -50,7 +49,7 @@ class WaterFlow:
         hysteresis_thresholds: List of (ascending, descending) power threshold tuples [MW]
         hysteresis_low_values: Flow rates for low state at each level [m³/h]
         hysteresis_high_values: Flow rates for high state at each level [m³/h]
-    
+
     Examples:
         >>> flow = WaterFlow(
         ...     pump_speed_min=1000,
@@ -74,7 +73,9 @@ class WaterFlow:
     pressure_min: float = 4  # bar
     pressure_back: float = 4  # bar
     current_max: float = 28000  # A
-    hysteresis_thresholds: List[tuple] = field(default_factory=list)  # [(asc, desc), ...] in MW
+    hysteresis_thresholds: List[tuple] = field(
+        default_factory=list
+    )  # [(asc, desc), ...] in MW
     hysteresis_low_values: List[float] = field(default_factory=list)  # m³/h
     hysteresis_high_values: List[float] = field(default_factory=list)  # m³/h
 
@@ -131,7 +132,7 @@ class WaterFlow:
             current_max=params["Imax"]["value"],
             hysteresis_thresholds=hysteresis_thresholds,
             hysteresis_low_values=hysteresis_low_values,
-            hysteresis_high_values=hysteresis_high_values
+            hysteresis_high_values=hysteresis_high_values,
         )
 
     def pump_speed(self, current: float) -> float:
@@ -149,7 +150,10 @@ class WaterFlow:
         if current >= self.current_max:
             return self.pump_speed_max + self.pump_speed_min
 
-        return self.pump_speed_max * (current / self.current_max) ** 2 + self.pump_speed_min
+        return (
+            self.pump_speed_max * (current / self.current_max) ** 2
+            + self.pump_speed_min
+        )
 
     def flow_rate(self, current: float) -> float:
         """
@@ -192,7 +196,10 @@ class WaterFlow:
             return self.pressure_min + self.pressure_max
 
         Vp_total = self.pump_speed_max + self.pump_speed_min
-        return self.pressure_min + self.pressure_max * (self.pump_speed(current) / Vp_total) ** 2
+        return (
+            self.pressure_min
+            + self.pressure_max * (self.pump_speed(current) / Vp_total) ** 2
+        )
 
     def pressure_drop(self, current: float) -> float:
         """
@@ -225,31 +232,31 @@ class WaterFlow:
     def debitbrut(self, power: float) -> float:
         """
         Compute secondary cooling loop flow rate as function of power using hysteresis model.
-        
+
         This method uses a multi-level hysteresis model to account for the fact that
         flow rate control depends not only on current power but also on the direction
         of power change (increasing vs decreasing).
-        
+
         Note: 'debitbrut' is the original French term for secondary loop flow rate.
         In new CSV files, prefer the column name 'flow_secondary' for clarity.
-        
+
         Based on the hysteresis model from examples/hysteresis.py
-        
+
         Args:
             power: Magnet power [MW] (scalar or array)
-            
+
         Returns:
             Secondary cooling loop flow rate [m³/h]
-            
+
         Raises:
             ValueError: If hysteresis parameters are not configured
-            
+
         Note:
             Hysteresis parameters must be set either:
             - Via from_file() loading a JSON with "hysteresis" section
             - By directly setting hysteresis_thresholds (as list of tuples),
               hysteresis_low_values, and hysteresis_high_values attributes
-              
+
         Example:
             >>> flow = WaterFlow()
             >>> # Each threshold is (ascending, descending) tuple
@@ -286,7 +293,7 @@ class WaterFlow:
             power_array,
             self.hysteresis_thresholds,
             self.hysteresis_low_values,
-            self.hysteresis_high_values
+            self.hysteresis_high_values,
         )
 
         # Return scalar if input was scalar
@@ -314,7 +321,7 @@ class WaterFlow:
                 "low_values": self.hysteresis_low_values,
                 "high_values": self.hysteresis_high_values,
                 "unit_thresholds": "MW",
-                "unit_values": "m³/h"
+                "unit_values": "m³/h",
             }
 
         return result

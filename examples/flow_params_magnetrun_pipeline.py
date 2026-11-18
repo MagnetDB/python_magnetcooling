@@ -597,9 +597,10 @@ def main():
         df, current_col="current", rpm_col="rpm", max_segments=2, show=show_plots, debug=debug
     )
 
-    # Extract Vp0 and Vpmax from pwlf equations
+    # Extract Vp0 and Vpmax from pwlf equations. Vpmax is the speed rise from
+    # Vp0 to Imax (WaterFlow: Vp = Vpmax·(I/Imax)² + Vp0), not Vp(Imax).
     vp0 = float(eqns[0].evalf(subs={Symbol("x"): 0}))
-    vpmax = float(eqns[0].evalf(subs={Symbol("x"): detected_imax}))
+    vpmax = float(eqns[0].evalf(subs={Symbol("x"): detected_imax})) - vp0
 
     # Step 3: Fit flow rate using python_magnetrun.fit
     flow_params_fit, _ = fit_flow_rate_magnetrun(

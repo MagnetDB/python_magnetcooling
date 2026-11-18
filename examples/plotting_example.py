@@ -185,7 +185,7 @@ if __name__ == "__main__":
     print("=" * 50)
 
     try:
-        import matplotlib
+        import matplotlib  # noqa: F401
         matplotlib_available = True
     except ImportError:
         matplotlib_available = False

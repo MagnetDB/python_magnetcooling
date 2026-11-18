@@ -6,3 +6,5 @@ files
 debhelper-build-stamp
 python3-magnetcooling/
 tmp/
+
+.envrc
