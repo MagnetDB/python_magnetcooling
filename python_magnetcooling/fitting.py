@@ -634,34 +634,31 @@ def _compute_fit_statistics(
 
 def _extract_piecewise_equations(pwlf_model) -> list:
     """
-    Extract symbolic equations from a pwlf piecewise linear fit.
+    Extract the polynomial of each segment of a pwlf piecewise fit as sympy.
 
-    This is a port of the find_eqn() function from python_magnetrun.
-    Requires sympy for symbolic manipulation.
+    pwlf does not store one polynomial per segment: its ``beta`` holds the
+    first segment's polynomial plus truncated-power terms ``(x - b_k)^j`` for
+    each breakpoint. Each segment's polynomial is therefore recovered by an
+    exact polynomial fit of ``pwlf_model.predict`` on points inside that
+    segment.
 
     Parameters
     ----------
     pwlf_model : pwlf.PiecewiseLinFit
-        Fitted piecewise linear model.
+        Fitted piecewise model.
 
     Returns
     -------
     list
-        List of sympy expressions, one for each segment.
+        One sympy expression in ``x`` per segment, ``sum c_j x^j``.
 
     Raises
     ------
     ImportError
         If sympy is not available.
-
-    Notes
-    -----
-    This function uses sympy to create symbolic representations of each
-    piecewise segment. For a degree-2 polynomial, the equation will be
-    of the form: a*x² + b*x + c
     """
     try:
-        from sympy import Symbol
+        from sympy import Float, Symbol
     except ImportError as e:
         raise ImportError(
             "sympy is required for symbolic equation extraction. "
@@ -669,26 +666,24 @@ def _extract_piecewise_equations(pwlf_model) -> list:
         ) from e
 
     x = Symbol("x")
-    n_segments = pwlf_model.n_segments
     degree = pwlf_model.degree
+    breaks = np.asarray(pwlf_model.fit_breaks, dtype=float)
 
     equations = []
-
-    # Extract coefficients for each segment
-    # pwlf stores beta coefficients for each polynomial term
-    for seg in range(n_segments):
-        # Build polynomial equation
-        # For degree 2: beta[0] + beta[1]*x + beta[2]*x^2
-        equation = 0
-        for deg in range(degree + 1):
-            idx = seg * (degree + 1) + deg
-            if idx < len(pwlf_model.beta):
-                coeff = pwlf_model.beta[idx]
-                equation += coeff * (x**deg)
-
-        equations.append(equation)
+    for lo, hi in zip(breaks[:-1], breaks[1:]):
+        # Points strictly inside the segment (polyfit scales its columns itself).
+        xs =np.linspace(lo, hi, 4 * (degree + 1) + 2)[1:-1]
+        coeffs = np.polynomial.polynomial.polyfit(xs, pwlf_model.predict(xs), degree)
+        equations.append(sum(Float(c) * x**j for j, c in enumerate(coeffs)))
 
     return equations
+
+
+def _pump_speed_model(
+    current: np.ndarray, vpmax: float, vp0: float, imax: float
+) -> np.ndarray:
+    """Pump speed ``Vpmax·(min(I, Imax)/Imax)² + Vp0`` [rpm], the clamped WaterFlow model."""
+    return vpmax * (np.minimum(np.asarray(current, dtype=float), imax) / imax) ** 2 + vp0
 
 
 # =============================================================================
@@ -704,10 +699,13 @@ def fit_pump_speed_simple(
     """
     Fit pump speed vs current using simple quadratic model.
 
-    Model: Vp(I) = Vpmax·(I/Imax)² + Vp0
+    Model: Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0, the WaterFlow model:
+    the speed saturates at Vpmax + Vp0 above Imax.
 
     Uses scipy.optimize.curve_fit with a fixed Imax value. This is the
-    simpler method that requires knowing Imax in advance.
+    simpler method that requires knowing Imax in advance. Samples above
+    Imax are fitted to the saturated speed, so they do not bias Vpmax and
+    Vp0.
 
     Parameters
     ----------
@@ -754,8 +752,8 @@ def fit_pump_speed_simple(
 
     # Define the pump speed model
     def vpump_func(x: np.ndarray, vpmax: float, vp0: float) -> np.ndarray:
-        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
-        return vpmax * (x / imax) ** 2 + vp0
+        """Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0"""
+        return _pump_speed_model(x, vpmax, vp0, imax)
 
     try:
         # Perform curve fitting
@@ -831,8 +829,11 @@ def fit_pump_speed_piecewise(
     Returns
     -------
     PumpSpeedFit
-        Fitted parameters with imax_detected=True if breakpoint detection
-        succeeded. Includes symbolic equations and breakpoints.
+        ``vpmax`` (speed rise above Vp0, as in WaterFlow), ``vp0`` and
+        ``fit_result`` from the clamped model fitted at the detected Imax
+        (:func:`fit_pump_speed_simple`); ``imax_detected=True`` if the
+        2-segment breakpoint was used; ``breakpoints`` and, when sympy is
+        available, one symbolic polynomial per piecewise segment.
 
     Raises
     ------
@@ -859,8 +860,12 @@ def fit_pump_speed_piecewise(
     -----
     The piecewise fitting tries segments sequentially:
     1. First tries 1 segment (simple polynomial)
-    2. If the fit at the final current is poor (>10 rpm error), tries 2 segments
+    2. If the fit at the highest current is poor (>10 rpm error), tries 2 segments
     3. With 2 segments, the breakpoint is interpreted as Imax
+    4. Vpmax and Vp0 are then fitted with the clamped model at that Imax
+
+    The samples may be in any order (e.g. time order); they are sorted by
+    current first.
 
     See Also
     --------
@@ -887,9 +892,13 @@ def fit_pump_speed_piecewise(
         f"degree={degree}"
     )
 
+    # Sort by current: the end-point check below needs the highest current last.
+    order = np.argsort(current, kind="stable")
+    current = np.asarray(current, dtype=float)[order]
+    pump_speed = np.asarray(pump_speed, dtype=float)[order]
+
     # Try segments sequentially
     best_fit = None
-    best_equations = None
 
     for n_segments in range(1, max_segments + 1):
         logger.debug(f"Trying {n_segments} segment(s)...")
@@ -904,36 +913,16 @@ def fit_pump_speed_piecewise(
         else:
             my_pwlf.fit(n_segments)
 
-        # Extract symbolic equations
-        try:
-            equations = _extract_piecewise_equations(my_pwlf)
-        except ImportError:
-            logger.warning("sympy not available, skipping equation extraction")
-            equations = None
+        # Check fit quality at the highest current
+        final_current = current[-1]
+        error = abs(float(my_pwlf.predict(final_current)[0]) - pump_speed[-1])
+        logger.debug(
+            f"Fit quality check: error at I={final_current:.0f} A is {error:.1f} rpm"
+        )
 
-        # Check fit quality at the final point
-        if equations is not None:
-            from sympy import Symbol
-
-            x = Symbol("x")
-            final_current = current[-1]
-            final_speed = pump_speed[-1]
-            predicted_speed = float(equations[0].evalf(subs={x: final_current}))
-            error = abs(predicted_speed - final_speed)
-
-            logger.debug(
-                f"Fit quality check: error at I={final_current:.0f} A is {error:.1f} rpm"
-            )
-
-            # If error is acceptable or this is the last attempt, use this fit
-            if error <= 10 or n_segments == max_segments:
-                best_fit = my_pwlf
-                best_equations = equations
-                break
-        else:
-            # No equations available, use this fit
+        # If error is acceptable or this is the last attempt, use this fit
+        if error <= 10 or n_segments == max_segments:
             best_fit = my_pwlf
-            best_equations = None
             break
 
     if best_fit is None:
@@ -941,7 +930,13 @@ def fit_pump_speed_piecewise(
 
     # Extract parameters
     n_segments = best_fit.n_segments
-    breakpoints_list = list(best_fit.fit_breaks)
+    breakpoints_list = [float(b) for b in best_fit.fit_breaks]
+
+    try:
+        equations = _extract_piecewise_equations(best_fit)
+    except ImportError:
+        logger.warning("sympy not available, skipping equation extraction")
+        equations = None
 
     # Determine Imax
     if n_segments == 2:
@@ -955,32 +950,24 @@ def fit_pump_speed_piecewise(
         imax_detected = False
         logger.info(f"Using data maximum as Imax: {detected_imax:.0f} A")
 
-    # Evaluate Vp0 and Vpmax from the equation
-    if best_equations is not None:
-        from sympy import Symbol
-
-        x = Symbol("x")
-        vp0 = float(best_equations[0].evalf(subs={x: 0}))
-        vpmax = float(best_equations[0].evalf(subs={x: detected_imax}))
-    else:
-        # Fallback: evaluate using pwlf predict
-        vp0 = float(best_fit.predict(0))
-        vpmax = float(best_fit.predict(detected_imax))
+    # Vpmax (rise above Vp0) and Vp0 from the clamped model at that Imax: the
+    # piecewise polynomials have a linear term the WaterFlow model does not have.
+    clamped = fit_pump_speed_simple(current, pump_speed, imax=detected_imax)
 
     logger.info(
-        f"Pump speed fit complete (piecewise): Vpmax={vpmax:.2f} rpm, "
-        f"Vp0={vp0:.2f} rpm, Imax={detected_imax:.0f} A (detected={imax_detected}), "
-        f"segments={n_segments}"
+        f"Pump speed fit complete (piecewise): Vpmax={clamped.vpmax:.2f} rpm, "
+        f"Vp0={clamped.vp0:.2f} rpm, Imax={detected_imax:.0f} A "
+        f"(detected={imax_detected}), segments={n_segments}"
     )
 
     return PumpSpeedFit(
-        vpmax=vpmax,
-        vp0=vp0,
+        vpmax=clamped.vpmax,
+        vp0=clamped.vp0,
         imax=detected_imax,
         imax_detected=imax_detected,
-        fit_result=None,  # pwlf doesn't provide scipy-style covariance
+        fit_result=clamped.fit_result,
         breakpoints=breakpoints_list,
-        equations=best_equations,
+        equations=equations,
     )
 
 
@@ -999,7 +986,8 @@ def fit_flow_rate(
 
     Model: F(I) = F0 + Fmax · Vp(I) / (Vpmax + Vp0)
 
-    where Vp(I) is the pump speed model from pump_fit.
+    where Vp(I) is the clamped pump speed model from pump_fit, so the flow
+    saturates at F0 + Fmax above Imax (as in WaterFlow).
 
     This function fits the flow rate characteristic curve based on the
     already-fitted pump speed parameters. The flow rate is assumed to be
@@ -1060,8 +1048,8 @@ def fit_flow_rate(
 
     # Define pump speed function
     def vpump_func(x: np.ndarray) -> np.ndarray:
-        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
-        return vpmax * (x / imax) ** 2 + vp0
+        """Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0"""
+        return _pump_speed_model(x, vpmax, vp0, imax)
 
     # Define flow rate model
     def flow_func(x: np.ndarray, f0: float, fmax: float) -> np.ndarray:
@@ -1106,7 +1094,8 @@ def fit_pressure(
 
     Model: P(I) = Pmin + Pmax · [Vp(I) / (Vpmax + Vp0)]²
 
-    where Vp(I) is the pump speed model from pump_fit.
+    where Vp(I) is the clamped pump speed model from pump_fit, so the
+    pressure saturates at Pmin + Pmax above Imax (as in WaterFlow).
 
     This function fits the pressure characteristic curve based on the
     already-fitted pump speed parameters. The pressure is assumed to be
@@ -1168,8 +1157,8 @@ def fit_pressure(
 
     # Define pump speed function
     def vpump_func(x: np.ndarray) -> np.ndarray:
-        """Vp(I) = Vpmax·(I/Imax)² + Vp0"""
-        return vpmax * (x / imax) ** 2 + vp0
+        """Vp(I) = Vpmax·(min(I, Imax)/Imax)² + Vp0"""
+        return _pump_speed_model(x, vpmax, vp0, imax)
 
     # Define pressure model
     def pressure_func(x: np.ndarray, pmin: float, pmax: float) -> np.ndarray:
@@ -1424,9 +1413,12 @@ def fit_hydraulic_system(
         pressure_fit=pressure_fit,
     )
 
+    pump_r2 = (
+        f"{pump_fit.fit_result.r_squared:.4f}" if pump_fit.fit_result else "N/A"
+    )
     logger.info(
         f"Hydraulic system fitting complete. "
-        f"Pump R²={pump_fit.fit_result.r_squared if pump_fit.fit_result else 'N/A':.4f}, "
+        f"Pump R²={pump_r2}, "
         f"Flow R²={flow_fit.r_squared:.4f}, "
         f"Pressure R²={pressure_fit.r_squared:.4f}"
     )
@@ -2203,9 +2195,9 @@ def plot_pump_fit(
         logger.warning("matplotlib not available. Cannot create plot.")
         return
 
-    # Generate fitted curve
+    # Generate fitted curve (saturates above Imax, as in WaterFlow)
     i_range = np.linspace(current.min(), current.max(), 200)
-    vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
+    vp_fit = _pump_speed_model(i_range, pump_fit.vpmax, pump_fit.vp0, pump_fit.imax)
 
     # Create plot
     fig, ax = plt.subplots(figsize=figsize)
@@ -2242,7 +2234,7 @@ def plot_pump_fit(
         linestyle=":",
         alpha=0.7,
         linewidth=1,
-        label=f"Vpmax = {pump_fit.vpmax + pump_fit.vp0:.1f} rpm",
+        label=f"Vp0 + Vpmax = {pump_fit.vpmax + pump_fit.vp0:.1f} rpm",
     )
 
     ax.set_xlabel(xlabel, fontsize=11)
@@ -2317,9 +2309,9 @@ def plot_flow_pressure_fit(
         logger.warning("matplotlib not available. Cannot create plot.")
         return
 
-    # Generate fitted curves
+    # Generate fitted curves (saturate above Imax, as in WaterFlow)
     i_range = np.linspace(current.min(), current.max(), 200)
-    vp_fit = pump_fit.vpmax * (i_range / pump_fit.imax) ** 2 + pump_fit.vp0
+    vp_fit = _pump_speed_model(i_range, pump_fit.vpmax, pump_fit.vp0, pump_fit.imax)
 
     # Flow: F(I) = F0 + Fmax * Vp(I)/(Vpmax + Vp0)
     flow_fit = flow_pressure_fit.f0 + flow_pressure_fit.fmax * vp_fit / (
@@ -2381,12 +2373,12 @@ def plot_flow_pressure_fit(
     )
     if flow_pressure_fit.back_pressure:
         ax2.axhline(
-            y=flow_pressure_fit.back_pressure.mean,
+            y=flow_pressure_fit.back_pressure,
             color="green",
             linestyle="--",
             alpha=0.7,
             linewidth=1,
-            label=f"Pback = {flow_pressure_fit.back_pressure.mean:.2f} bar",
+            label=f"Pback = {flow_pressure_fit.back_pressure:.2f} bar",
         )
     ax2.set_xlabel(xlabel, fontsize=11)
     ax2.set_ylabel("Pressure (bar)", fontsize=11)

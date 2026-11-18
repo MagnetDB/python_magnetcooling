@@ -753,3 +753,121 @@ def test_multiple_fits_reproducible():
     assert pump_fit1.vp0 == pytest.approx(pump_fit2.vp0)
     assert flow_pressure_fit1.fmax == pytest.approx(flow_pressure_fit2.fmax)
     assert flow_pressure_fit1.pmax == pytest.approx(flow_pressure_fit2.pmax)
+
+
+# =============================================================================
+# Saturation above Imax: the fits use the clamped WaterFlow model
+# =============================================================================
+
+KNOWN_PUMP = PumpSpeedFit(vpmax=KNOWN_VPMAX, vp0=KNOWN_VP0, imax=KNOWN_IMAX)
+
+
+def test_fit_pump_speed_simple_with_plateau():
+    """Samples above Imax follow the saturated speed and do not bias the fit."""
+    data = make_synthetic_data(n=200, noise_level=0.0, include_plateau=True)
+    fit = fit_pump_speed_simple(data["current"], data["pump_speed"], imax=KNOWN_IMAX)
+    assert fit.vpmax == pytest.approx(KNOWN_VPMAX, rel=1e-6)
+    assert fit.vp0 == pytest.approx(KNOWN_VP0, rel=1e-6)
+
+
+@pytest.mark.filterwarnings("ignore:Covariance of the parameters")  # exact fit
+def test_fit_flow_rate_with_plateau():
+    """Flow above Imax is F0 + Fmax; the fit recovers F0 and Fmax exactly."""
+    data = make_synthetic_data(n=200, noise_level=0.0, include_plateau=True)
+    fit = fit_flow_rate(data["current"], data["flow"], KNOWN_PUMP)
+    assert fit.parameters[0] == pytest.approx(KNOWN_F0, abs=1e-6)
+    assert fit.parameters[1] == pytest.approx(KNOWN_FMAX, rel=1e-6)
+
+
+def test_fit_pressure_with_plateau():
+    """Pressure above Imax is Pmin + Pmax; the fit recovers Pmin and Pmax exactly."""
+    data = make_synthetic_data(n=200, noise_level=0.0, include_plateau=True)
+    fit = fit_pressure(data["current"], data["pressure"], KNOWN_PUMP)
+    assert fit.parameters[0] == pytest.approx(KNOWN_PMIN, rel=1e-6)
+    assert fit.parameters[1] == pytest.approx(KNOWN_PMAX, rel=1e-6)
+
+
+def _piecewise_fit(current, pump_speed):
+    pytest.importorskip("pwlf")
+    return fit_pump_speed_piecewise(current, pump_speed, max_segments=2)
+
+
+def test_fit_pump_speed_piecewise_vpmax_is_rise_above_vp0():
+    """vpmax has the WaterFlow meaning: speed rise from Vp0 to Imax, not Vp(Imax)."""
+    data = make_synthetic_data(n=300, noise_level=0.002, include_plateau=True)
+    fit = _piecewise_fit(data["current"], data["pump_speed"])
+    assert fit.imax_detected is True
+    assert fit.imax == pytest.approx(KNOWN_IMAX, rel=0.02)
+    assert fit.vpmax == pytest.approx(KNOWN_VPMAX, rel=0.02)
+    assert fit.vp0 == pytest.approx(KNOWN_VP0, rel=0.02)
+    assert fit.fit_result is not None
+
+
+def test_fit_pump_speed_piecewise_unsorted_input():
+    """Samples in time order (not sorted by current) give the same fit."""
+    data = make_synthetic_data(n=300, noise_level=0.002, include_plateau=True)
+    order = np.random.default_rng(0).permutation(len(data["current"]))
+    ref = _piecewise_fit(data["current"], data["pump_speed"])
+    fit = _piecewise_fit(data["current"][order], data["pump_speed"][order])
+    assert fit.imax_detected is True
+    assert fit.imax == pytest.approx(ref.imax, rel=1e-3)
+    assert fit.vpmax == pytest.approx(ref.vpmax, rel=1e-3)
+
+
+def test_fit_pump_speed_piecewise_equations_match_fit():
+    """The symbolic equation of each segment reproduces the piecewise curve."""
+    pytest.importorskip("sympy")
+    data = make_synthetic_data(n=300, noise_level=0.002, include_plateau=True)
+    fit = _piecewise_fit(data["current"], data["pump_speed"])
+    assert fit.equations is not None and len(fit.equations) == 2
+    from sympy import Symbol
+
+    x = Symbol("x")
+    b0, b1, b2 = fit.breakpoints
+    for eq, i in ((fit.equations[0], (b0 + b1) / 2), (fit.equations[1], (b1 + b2) / 2)):
+        # Inside each segment the data are a known function of current.
+        expected = KNOWN_PUMP.pump_speed(i)
+        assert float(eq.evalf(subs={x: i})) == pytest.approx(expected, rel=0.01)
+
+
+def test_fit_hydraulic_system_piecewise_with_plateau():
+    """End-to-end piecewise fit on data that saturates above Imax."""
+    data = make_synthetic_data(n=300, noise_level=0.002, include_plateau=True)
+    pytest.importorskip("pwlf")
+    pump_fit, fp = fit_hydraulic_system(
+        data["current"], data["pump_speed"], data["flow"], data["pressure"],
+        data["back_pressure"], imax=None, method="piecewise",
+    )
+    assert pump_fit.vpmax == pytest.approx(KNOWN_VPMAX, rel=0.02)
+    assert fp.fmax == pytest.approx(KNOWN_FMAX, rel=0.02)
+    assert fp.pmax == pytest.approx(KNOWN_PMAX, rel=0.02)
+
+
+def test_plot_helpers_run(tmp_path):
+    """Both plot helpers draw and save without showing a window."""
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from python_magnetcooling.fitting import plot_flow_pressure_fit, plot_pump_fit
+
+    data = make_synthetic_data(n=100, noise_level=0.01, include_plateau=True)
+    fp = FlowPressureFit(
+        f0=KNOWN_F0, fmax=KNOWN_FMAX, pmin=KNOWN_PMIN, pmax=KNOWN_PMAX,
+        back_pressure=KNOWN_BP,
+    )
+    plot_pump_fit(data["current"], data["pump_speed"], KNOWN_PUMP, show=False,
+                  save_path=str(tmp_path / "pump.png"))
+    plot_flow_pressure_fit(data["current"], data["flow"], data["pressure"], KNOWN_PUMP,
+                           fp, show=False, save_path=str(tmp_path / "flow.png"))
+    assert (tmp_path / "pump.png").exists() and (tmp_path / "flow.png").exists()
+
+
+def test_pump_speed_model_clamped_on_arrays():
+    """The model shared by the fits and plots saturates above Imax."""
+    from python_magnetcooling.fitting import _pump_speed_model
+
+    i = np.array([0.0, KNOWN_IMAX / 2, KNOWN_IMAX, 1.2 * KNOWN_IMAX])
+    vp = _pump_speed_model(i, KNOWN_VPMAX, KNOWN_VP0, KNOWN_IMAX)
+    expected = [KNOWN_PUMP.pump_speed(float(x)) for x in i]
+    np.testing.assert_allclose(vp, expected)
