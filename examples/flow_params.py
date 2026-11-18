@@ -53,7 +53,8 @@ def stats(
     )
 
     if debug:
-        print(f"{Okey}: stats")
+        stats = result[Okey].describe(include="all")
+        print(f"{Okey} stats: {stats}")
     return (result[Okey].mean(), result[Okey].std())
 
 

@@ -9,9 +9,9 @@ This module handles:
 """
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from typing import List
-from warnings import simplefilter
 
 import numpy as np
 from pint import Quantity, UnitRegistry
@@ -19,8 +19,8 @@ from pint import Quantity, UnitRegistry
 # Import hysteresis model from hysteresis module
 from .hysteresis import multi_level_hysteresis as _multi_level_hysteresis
 
-# Ignore pint warnings
-simplefilter("ignore")
+# Suppress only pint's own DeprecationWarnings, not all library warnings.
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pint")
 Quantity([])
 
 # Pint configuration
