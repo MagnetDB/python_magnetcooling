@@ -9,9 +9,9 @@ This module handles:
 """
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from typing import List
-from warnings import simplefilter
 
 import numpy as np
 from pint import Quantity, UnitRegistry
